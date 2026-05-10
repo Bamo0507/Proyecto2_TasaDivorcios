@@ -1,0 +1,468 @@
+---
+title: "Proyecto 2 — Predicción de Tasa de Divorcios en Guatemala"
+author: "Bryan Martínez, Adriana Palacios, Brandon Rivera, Javier Benítez, y Pedro Avila"
+date: "`r Sys.Date()`"
+output:
+  pdf_document:
+    latex_engine: xelatex
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(readr)
+library(dplyr)
+library(tidyverse)
+library(stringr)
+library(stringi)
+library(ggplot2)
+```
+
+---
+
+## Variable Respuesta
+
+La variable respuesta es la **tasa de divorcio por cada 100 matrimonios** a nivel departamental y anual, calculada como (total_divorcios / total_matrimonios) * 100 para cada par (departamento, año) del período 2009–2022. Es una variable cuantitativa continua.
+
+La razón principal para tomarla como variable a estudiar se debe a los hallazgos del primer proyecto, en donde encontramos que Guatemala acumula más del 38% de los divorcios del país. Pero eso refleja su tamaño poblacional, no una mayor propensión al divorcio.
+
+Con esto en mente, comparar cifras absolutas de divorcio o matrimonio entre departamentos no tiene mucho sentido, ya que se ve afectado directamente por el tamaño poblacional. Comparar tasas sí permite notar diferencias reales entre departamentos: si en el departamento A ocurren más divorcios por cada 100 matrimonios que en el B, eso ya nos dice algo independientemente del tamaño de cada uno. Al construir una observación por cada par (departamento, año), el modelo puede aprender el patrón histórico de cada departamento y estimar la tasa esperada para combinaciones no vistas durante el entrenamiento, lo que le da utilidad más allá de solo describir el pasado.
+
+---
+
+## Antecedentes
+
+¿Qué hace que un matrimonio termine en divorcio? Para tratar de responder a este tipo de preguntas, recientemente ha surgido el uso de algoritmos de machine learning que permiten identificar patrones y realizar predicciones. Como equipo, consideramos que este es uno de los fenómenos más relevantes a estudiar actualmente, en donde vemos cómo los matrimonios son más propensos a terminar en divorcio. A continuación se presentan algunos de los estudios más relevantes encontrados en relación al tema. 
+
+### Predicción de divorcio con Machine Learning
+
+Yöntem et al. (2019) construyeron uno de los conjuntos de datos más utilizados en este campo: entrevistas a parejas divorciadas y casadas, con 54 ítems de la Divorce Predictor Scale derivada de la terapia de Gottman. Con red neuronal y selección de características por correlación alcanzaron una precisión del 98.82 %. El dataset está disponible en UCI Machine Learning Repository y se convirtió en el punto de partida de muchos estudios posteriores, estableciendo que la predicción del divorcio es factible cuando se dispone de variables conductuales bien estructuradas.
+
+Fareed et al. (2022) extendieron ese trabajo combinando máquinas de soporte vectorial (SVM), modelos lineales y redes neuronales bajo un enfoque de ensemble learning. Su hallazgo más importante fue que la selección de variables resulta más determinante que la elección del algoritmo. Dado el problema que se está estudiando, esto tiene bastante sentido ya que varios factores, como la cantidad de hijos, salarios y nivel educativo, pueden impactar directamente en el divorcio. Cabe mencionar que el estudio se puede encontrar en PubMed Central como PMC9293523.
+
+Al-Otaibi et al. (2024), publicado en Scientific Reports, aplicaron ANN, Naïve Bayes y Random Forest sobre datos de Arabia Saudita. Random Forest alcanzó el 91.66 % de precisión tras selección de características, superando a Naïve Bayes cuando las variables estaban correlacionadas. Los autores señalan que la ventaja de Random Forest viene de su capacidad para capturar relaciones no lineales, lo que lo hace especialmente útil con variables categóricas y ordinales como las que se estarán utilizando para este proyecto. Tomando en consideración este factor, uno de los modelos a entrenar va a ser random forest. Asimismo, lo encontrado en este artículo es bastante llamativo porque nos damos cuenta de que el divorcio probablemente no se puede explicar a través de una relación lineal en su totalidad. Algo que cobra sentido si se consideran los factores emocionales, que difícilmente siguen un patrón lineal. 
+ 
+Dogan y Kılınç (2025), en Social Science Computer Review, analizaron la Encuesta de Estructura Familiar de Turquía usando Random Forest y regresión logística. Los predictores más robustos que encontraron fueron la edad al contraer matrimonio, los años de convivencia y el nivel educativo. Aunque nuestro dataset no cuenta con variables individuales de ese tipo, el análisis exploratorio del Proyecto 1 ya mostró que los matrimonios se concentran en el rango 20–24 años y los divorcios en el de 30–34 años, lo que sugiere que la distribución etaria agregada puede capturar parte de ese comportamiento a nivel departamental.
+
+### Factores económicos y variación regional
+
+Mbaye et al. (2020) estudiaron la distribución geográfica del divorcio en Omán usando modelos de regresión espacial. Sus resultados muestran que el empleo femenino, el nivel educativo y la proporción de residencia urbana explican una parte importante de la varianza en las tasas locales. Además, encontraron autocorrelación espacial positiva: las wilayas con tasas altas tienden a ser vecinas de otras con tasas igualmente altas. Ese mismo patrón apareció en el análisis de clustering del Proyecto 1, donde los departamentos del altiplano occidental de Guatemala (Totonicapán, Sololá, Quiché) forman un bloque con proporciones bajas de divorcio respecto al matrimonio.
+
+Papageorgiou y Velásquez (2025) analizaron 83 países entre 1990 y 2019 y encontraron que las crisis bancarias y cambiarias se asocian con aumentos en las tasas de divorcio, con rezagos de uno a tres años. Esto ayuda a entender los picos observados en Guatemala después de 2019 y abre la posibilidad de incorporar variables económicas en versiones futuras del modelo, si es que se lograra encontrar un dataset que proporcione estos datos de forma accesible.
+
+Esteve et al. (2023) documentaron los cambios en el patrón del matrimonio en siete países de América Latina, concluyendo que la expansión educativa y la urbanización son los principales factores detrás del retraso en la edad al matrimonio en la región. Interesantemente, ese retraso no fue confirmado para Guatemala en el período 2009–2022 durante el análisis exploratorio, lo que ya es un resultado relevante en sí mismo para el contexto regional.
+
+Tomando todo esto en consideración y dada la limitación del dataset del INE trabajado en el proyecto anterior, se decidió expandir la búsqueda. Se encontró que el GDL publica datos anuales con índices de desarrollo humano a nivel subnacional. Esto le da al modelo la posibilidad de identificar si ciertos factores como el nivel educativo, de salud o de ingreso tienen un impacto sobre la tasa de divorcios, que es precisamente el enfoque de estudio de este proyecto. 
+
+------------------------------------------------------------------------
+
+## Algoritmos a Utilizar
+
+Dado el perfil del dataset 308 observaciones a nivel departamento-año, variable respuesta continua, mezcla de predictores numéricos y una variable categórica— se seleccionaron tres algoritmos para comparar:
+
+### Regresión Lineal Múltiple
+
+El modelo más simple de los tres y el que sirve como línea base. Permite cuantificar directamente el peso de cada predictor sobre la tasa de divorcio y es fácil de interpretar. Su limitación real es el supuesto de linealidad: los datos del INE ya mostraron asimetría positiva en la distribución de valores, lo que sugiere que las relaciones probablemente no son lineales. Aun así, sirve como referencia para evaluar si los modelos más complejos realmente aportan algo, y de si realmente existe una relación lineal entre las variables predictoras.
+
+### Árbol de Decisión
+
+Captura relaciones no lineales y umbrales naturales sin necesidad de especificarlos de antemano. Por ejemplo, puede detectar por sí solo que los departamentos por debajo de cierto volumen de matrimonios se comportan de manera distinta. No requiere normalización de variables y su estructura de reglas es directamente interpretable. El riesgo es el sobreajuste cuando la profundidad no se controla, por lo que se aplicará poda mediante validación cruzada. Así mismo estaremos comparando los resultados entre el dataset de entrenamiento y el de prueba para poder validar si hay un declive considerable en las métricas cuando pasamos al dataset de prueba. 
+
+### Random Forest
+
+De los tres, es el que tiene mayores expectativas de desempeño para este problema. Maneja bien la combinación de variables numéricas y categóricas, no asume ninguna forma funcional, y es robusto frente a valores atípicos. Al-Otaibi et al. (2024) y Dogan y Kılınç (2025) reportan consistentemente que Random Forest supera a modelos individuales en problemas demográficos con perfiles similares al nuestro. Adicionalmente, el índice de importancia de variables (Gini importance) permitirá identificar qué predictores, departamento, tendencia temporal o indicadores de desarrollo humano, pesan más en la predicción, lo cual es una conclusión sustantiva sobre Guatemala más allá de la métrica de error.
+
+------------------------------------------------------------------------
+
+## Construcción del Dataset
+
+El dataset final se construye combinando tres fuentes: los registros de matrimonios y divorcios por departamento del INE (2009–2022), y los índices de desarrollo humano subnacionales del Global Data Lab (GDL) para el mismo período.
+
+### Fuentes de datos
+
+- **INE Guatemala** `matrimonios_depto_mes.csv` y `divorcios_depto_mes.csv`: contienen el total de matrimonios y divorcios registrados por departamento y mes. Se utilizan únicamente las filas con `mes` vacío y `nivel_geo == "departamento"`, que corresponden a los totales anuales por departamento.
+- **Global Data Lab (GDL)** 14 archivos CSV, uno por año (2009–2022): contienen los índices de desarrollo humano (HDI compuesto, salud, educación e ingreso) para las 8 regiones administrativas de Guatemala. Dado que el GDL opera a nivel regional y no departamental, se construye un mapa explícito que asigna cada uno de los 22 departamentos a su región correspondiente.
+
+### Normalización de nombres de departamentos
+
+```{r normalizacion}
+norm_depto <- function(x) {
+  x %>%
+    str_trim() %>%
+    str_squish() %>%
+    stri_trans_general("Latin-ASCII") %>%
+    str_to_lower()
+}
+```
+
+### Carga y limpieza de datos del INE
+
+```{r ine_data}
+matrimonios_anual <- read_csv("../matrimonios_depto_mes.csv", show_col_types = FALSE) %>%
+  filter(nivel_geo == "departamento", is.na(mes)) %>%
+  mutate(departamento = norm_depto(departamento)) %>%
+  group_by(anio, departamento) %>%
+  summarise(total_matrimonios = sum(valor, na.rm = TRUE), .groups = "drop")
+
+divorcios_anual <- read_csv("../divorcios_depto_mes.csv", show_col_types = FALSE) %>%
+  filter(nivel_geo == "departamento", is.na(mes)) %>%
+  mutate(departamento = norm_depto(departamento)) %>%
+  group_by(anio, departamento) %>%
+  summarise(total_divorcios = sum(valor, na.rm = TRUE), .groups = "drop")
+
+dataset_ine <- matrimonios_anual %>%
+  inner_join(divorcios_anual, by = c("anio", "departamento")) %>%
+  mutate(tasa_divorcio_por_100 = (total_divorcios / total_matrimonios) * 100)
+```
+
+### Carga de datos del GDL
+
+```{r gdl_data}
+archivos_gdl <- list.files(pattern = "GDL-Human-Development.*\\.csv$")
+
+gdl_consolidado <- map_dfr(archivos_gdl, read_csv, show_col_types = FALSE) %>%
+  filter(Level == "Subnat") %>%
+  select(region_gdl = Region, anio = Year, shdi, healthindex, edindex, incindex)
+```
+
+### Mapeo de departamentos a regiones GDL
+
+```{r region_map}
+region_map <- tibble(
+  departamento = c(
+    "guatemala",
+    "alta verapaz", "baja verapaz",
+    "el progreso", "izabal", "zacapa", "chiquimula",
+    "santa rosa", "jalapa", "jutiapa",
+    "chimaltenango", "sacatepequez", "escuintla",
+    "san marcos", "quetzaltenango", "retalhuleu",
+    "suchitepequez", "solola", "totonicapan",
+    "huehuetenango", "quiche",
+    "peten"
+  ),
+  region_gdl = c(
+    "Metropolitan",
+    "North", "North",
+    "North-Oriental", "North-Oriental", "North-Oriental", "North-Oriental",
+    "South-Oriental", "South-Oriental", "South-Oriental",
+    "Central", "Central", "Central",
+    "South-Occidental", "South-Occidental", "South-Occidental",
+    "South-Occidental", "South-Occidental", "South-Occidental",
+    "North-Occidental", "North-Occidental",
+    "Peten"
+  )
+)
+```
+
+### Join final y dataset completo
+
+Los cuatro índices que provienen del GDL se interpretan como valores entre 0 y 1, donde valores más cercanos a 1 indican mejores condiciones:
+
+- **SHDI** (*Subnational Human Development Index*): índice compuesto que resume el nivel de desarrollo humano de la región. Combina las tres dimensiones siguientes en un solo valor.
+- **Health Index**: mide el nivel de salud de la población a partir de la esperanza de vida al nacer. Regiones con mayor acceso a servicios de salud y mejor calidad de vida tienden a valores más altos.
+- **Educational Index** (*edindex*): refleja el acceso y los logros educativos de la población, considerando los años de escolaridad promedio y los años de escolaridad esperados.
+- **Income Index** (*incindex*): aproxima el nivel de ingreso o poder adquisitivo de la región, basado en el ingreso nacional bruto per cápita ajustado.
+
+Estos índices se asignan a nivel de región administrativa (8 regiones de Guatemala), por lo que todos los departamentos dentro de una misma región comparten el mismo valor para un año dado. Esto es una limitación conocida del dataset, que se menciona como parte de las restricciones del análisis.
+
+```{r dataset_final}
+dataset_final <- dataset_ine %>%
+  left_join(region_map, by = "departamento") %>%
+  left_join(gdl_consolidado, by = c("region_gdl", "anio")) %>%
+  select(departamento, anio, total_matrimonios, total_divorcios,
+         shdi, healthindex, edindex, incindex,
+         tasa_divorcio_por_100)
+
+glimpse(dataset_final)
+```
+
+```{r verificacion}
+cat("Observaciones totales:", nrow(dataset_final), "\n")
+cat("Departamentos únicos:", n_distinct(dataset_final$departamento), "\n")
+cat("Años cubiertos:", min(dataset_final$anio), "–", max(dataset_final$anio), "\n")
+```
+
+------------------------------------------------------------------------
+
+## Conjuntos de Entrenamiento y Prueba
+
+### Método de partición
+
+Dado que el dataset tiene una dimensión temporal explícita, cada observación corresponde a un departamento en un año específico, se utilizó una **partición temporal** en lugar de una partición aleatoria. Dividir aleatoriamente introduciría fuga de datos: el modelo podría entrenarse con información de 2021 y luego evaluarse en 2020, lo que no refleja ningún escenario de uso real.
+
+La partición se define así:
+
+- **Entrenamiento:** años 2009 a 2018 — el modelo aprende los patrones históricos.
+- **Prueba:** años 2019 a 2022 — se evalúa qué tan bien generaliza a años que no vio.
+
+```{r particion}
+train_set <- dataset_final %>% filter(anio <= 2018)
+test_set  <- dataset_final %>% filter(anio >  2018)
+
+cat("Entrenamiento:", nrow(train_set), "observaciones",
+    sprintf("(%.1f%%)\n", 100 * nrow(train_set) / nrow(dataset_final)))
+cat("Prueba:       ", nrow(test_set),  "observaciones",
+    sprintf("(%.1f%%)\n", 100 * nrow(test_set)  / nrow(dataset_final)))
+```
+
+El conjunto de entrenamiento cubre 10 años × 22 departamentos = **220 observaciones (71.4 %)** y el de prueba cubre 4 años × 22 departamentos = **88 observaciones (28.6 %)**. Dado que las observaciones están fijas a combinaciones de departamento y año, esta es la partición temporal más cercana a una división 70/30.
+
+### Análisis de valores atípicos en la variable respuesta
+
+Como la variable respuesta es cuantitativa continua, no aplica un análisis de balance. En su lugar se analizan los valores atípicos usando el criterio del rango intercuartílico (IQR): se considera atípico cualquier valor por debajo de Q1 − 1.5 * IQR o por encima de Q3 + 1.5 * IQR.
+
+```{r atipicos_calculo}
+Q1  <- quantile(dataset_final$tasa_divorcio_por_100, 0.25, na.rm = TRUE)
+Q3  <- quantile(dataset_final$tasa_divorcio_por_100, 0.75, na.rm = TRUE)
+IQR_val <- IQR(dataset_final$tasa_divorcio_por_100, na.rm = TRUE)
+
+lim_inf <- Q1 - 1.5 * IQR_val
+lim_sup <- Q3 + 1.5 * IQR_val
+
+cat(sprintf("Q1: %.3f | Q3: %.3f | IQR: %.3f\n", Q1, Q3, IQR_val))
+cat(sprintf("Límite inferior: %.3f | Límite superior: %.3f\n", lim_inf, lim_sup))
+```
+
+```{r atipicos_boxplot}
+ggplot(dataset_final, aes(y = tasa_divorcio_por_100)) +
+  geom_boxplot(outlier.colour = "red", outlier.size = 2) +
+  labs(
+    title = "Distribución de la tasa de divorcio por cada 100 matrimonios",
+    y     = "Divorcios por cada 100 matrimonios"
+  ) +
+  theme_minimal()
+```
+
+```{r atipicos_tabla}
+atipicos <- dataset_final %>%
+  filter(tasa_divorcio_por_100 > lim_sup | tasa_divorcio_por_100 < lim_inf) %>%
+  arrange(desc(tasa_divorcio_por_100))
+
+cat("Total de observaciones atípicas:", nrow(atipicos), "\n\n")
+atipicos %>% select(departamento, anio, tasa_divorcio_por_100, total_matrimonios, total_divorcios)
+```
+
+Los atípicos detectados son observaciones reales del dataset, no errores de captura. El departamento de Guatemala concentra sistemáticamente las tasas más altas, lo que es consistente con los resultados del Proyecto 1: ya en el clustering aparecía como un caso separado del resto del país. Esta diferencia responde a factores estructurales, mayor acceso a servicios legales, urbanización, densidad poblacional, y no a ruido en los datos.
+
+Por eso no se eliminan. Los tres modelos los recibirán tal como están durante el entrenamiento. Si un modelo logra aprender que Guatemala se comporta distinto al resto, eso es precisamente lo que queremos que capture.
+
+### Variables finales para los modelos
+
+Antes de pasar los datos a los modelos, se eliminan dos grupos de variables por razones distintas.
+
+**`total_matrimonios` y `total_divorcios`** se excluyen porque introducirían fuga de información hacia la variable respuesta. La tasa se calcula directamente como `(total_divorcios / total_matrimonios) * 100`, por lo que ambas columnas contienen, implícitamente, el valor que el modelo intenta predecir. Incluirlas equivaldría a darle la respuesta antes de que haga la pregunta.
+
+**`shdi`** se excluye porque es un índice compuesto que el GDL construye a partir de los tres índices que ya están en el dataset: `healthindex`, `edindex` e `incindex`. Mantenerlo junto a sus componentes generaría multicolinealidad y no aportaría información nueva.
+
+Las variables que efectivamente se le pasan a los modelos son:
+
+| Variable | Rol | Tipo |
+|---|---|---|
+| `departamento` | Predictora | Categórica |
+| `anio` | Predictora | Numérica |
+| `healthindex` | Predictora | Numérica |
+| `edindex` | Predictora | Numérica |
+| `incindex` | Predictora | Numérica |
+| `tasa_divorcio_por_100` | Respuesta | Numérica |
+
+```{r dataset_modelo}
+vars_modelo <- c("departamento", "anio", "healthindex", "edindex", "incindex",
+                 "tasa_divorcio_por_100")
+
+train_modelo <- train_set %>% select(all_of(vars_modelo))
+test_modelo  <- test_set  %>% select(all_of(vars_modelo))
+
+glimpse(train_modelo)
+```
+
+------------------------------------------------------------------------
+
+## Preprocesamiento y Transformaciones
+
+### Escalado y normalización
+
+Algunos algoritmos de aprendizaje automático son sensibles a la escala de las variables. En modelos como KNN o SVM, la distancia entre observaciones depende directamente de la magnitud de cada variable: si `anio` va de 2009 a 2022 y `incindex` va de 0 a 1, el modelo le asignaría un peso desproporcionado al año simplemente porque sus valores son numéricamente más grandes. En esos casos, escalar o normalizar las variables antes de entrenar es indispensable.
+
+Sin embargo, los tres modelos seleccionados en este proyecto no tienen esa dependencia:
+
+- **Regresión Lineal Múltiple**: el escalado modifica la magnitud de los coeficientes estimados, pero no cambia las predicciones ni el ajuste del modelo. La relación entre predictores y variable respuesta se captura igual con o sin escala.
+- **Árbol de Decisión**: los árboles trabajan haciendo cortes sobre umbrales de cada variable de forma independiente. Un corte en `incindex > 0.7` funciona exactamente igual que uno en `incindex_escalado > 1.2`; el resultado del árbol no cambia.
+- **Random Forest**: al ser un ensamble de árboles de decisión, hereda la misma invarianza. La escala de las variables no afecta ni la estructura de los árboles ni la importancia relativa de las variables.
+
+Por esta razón, los datos se pasan a los tres modelos sin ninguna transformación de escala.
+
+### Conversión de variable categórica
+
+El único preprocesamiento aplicado es la representación de `departamento` como variable categórica. Al ser una variable con 22 valores posibles, uno por cada departamento de Guatemala, no puede ingresarse directamente como texto a un modelo numérico. Lo que se hace es convertirla en un conjunto de variables binarias: por cada departamento se crea una columna que toma el valor 1 si la observación corresponde a ese departamento y 0 en caso contrario. Esto se conoce como codificación dummy u one-hot encoding.
+
+En la práctica, R maneja esto de forma automática cuando la variable está declarada como `factor`. Para regresión lineal, crea n-1 columnas binarias y deja un departamento como categoría de referencia para evitar multicolinealidad perfecta. Los modelos de árbol y Random Forest manejan el factor directamente sin necesidad de expandirlo en columnas, pero igualmente requieren que esté declarado como `factor` y no como texto plano.
+
+Este es el único paso de preprocesamiento que se aplica antes de entrenar los tres modelos.
+
+------------------------------------------------------------------------
+
+## Métricas de Evaluación
+
+Los tres algoritmos se compararán usando dos métricas calculadas sobre el conjunto de prueba (años 2019--2022). Calcularlas también sobre el conjunto de entrenamiento permitirá detectar sobreajuste.
+
+### R^2 - Coeficiente de Determinación
+
+El R^2 indica qué proporción de la varianza de la variable respuesta es explicada por el modelo. Un R^2 de 0.80 significa que el modelo captura el 80% de la variabilidad en la tasa de divorcio; el 20% restante queda sin explicar. Es la métrica principal de ajuste porque habla en términos sustantivos: cuánto de lo que ocurre con el divorcio departamental puede atribuirse a las variables que tenemos.
+
+Un R^2 alto en entrenamiento y notablemente más bajo en prueba es la señal más directa de sobreajuste: el modelo memorizó el conjunto de entrenamiento en lugar de aprender un patrón generalizable. Para este proyecto se considera aceptable una caída de hasta 10 puntos porcentuales entre entrenamiento y prueba.
+
+### RMSE - Raíz del Error Cuadrático Medio
+
+El RMSE mide el error típico de predicción en las mismas unidades que la variable respuesta, es decir, en divorcios por cada 100 matrimonios. Un RMSE de 2.5 significa que en promedio el modelo se equivoca en 2.5 divorcios por cada 100 matrimonios. Al elevar los errores al cuadrado antes de promediar, penaliza más los errores grandes, lo que lo hace sensible a los valores atípicos. En este dataset eso es una propiedad deseable: el departamento de Guatemala concentra las tasas más altas y los errores sobre él deben pesar en la evaluación.
+
+Se prefiere RMSE sobre MAE porque los errores grandes son cualitativamente más graves en este contexto: subestimar significativamente la tasa de un departamento tiene mayores implicaciones de política pública que subestimarlo levemente. Se prefiere sobre el MSE porque al tomar la raíz cuadrada el resultado es directamente interpretable en las mismas unidades que la variable respuesta, a diferencia del MSE que quedaría expresado en divorcios al cuadrado por cada 100 matrimonios al cuadrado.
+
+### Criterio de Selección
+
+El mejor modelo de cada algoritmo será el de menor RMSE en el conjunto de prueba, siempre que no presente sobreajuste (caída de R^2 mayor a 10 puntos porcentuales entre entrenamiento y prueba). Si dos modelos tienen RMSE comparable, se prefiere el de mayor R^2 o el más simple.
+
+```{r funciones_metrica}
+rmse_fn <- function(actual, predicted) sqrt(mean((actual - predicted)^2))
+r2_fn   <- function(actual, predicted) {
+  1 - sum((actual - predicted)^2) / sum((actual - mean(actual))^2)
+}
+```
+
+------------------------------------------------------------------------
+
+## Regresión Lineal Múltiple
+
+### Variante 1
+
+#### Hiperparámetros y Justificación
+
+> **\[COMPLETAR\]** Indicar qué especificación del modelo se usa en esta variante (qué predictores incluye) y justificar por qué.
+
+#### Entrenamiento y Resultados
+
+> **\[COMPLETAR\]** Código de entrenamiento. Reportar RMSE y R² en entrenamiento y en prueba.
+
+### Variante 2
+
+#### Hiperparámetros y Justificación
+
+> **\[COMPLETAR\]** Indicar qué cambia respecto a la Variante 1 y justificar el cambio.
+
+#### Entrenamiento y Resultados
+
+> **\[COMPLETAR\]** Código de entrenamiento. Reportar RMSE y R² en entrenamiento y en prueba.
+
+### Variante 3
+
+#### Hiperparámetros y Justificación
+
+> **\[COMPLETAR\]** Indicar qué cambia respecto a las variantes anteriores y justificar el cambio.
+
+#### Entrenamiento y Resultados
+
+> **\[COMPLETAR\]** Código de entrenamiento. Reportar RMSE y R² en entrenamiento y en prueba.
+
+### Selección del Mejor Modelo de Regresión Lineal
+
+> **\[COMPLETAR\]** Tabla comparativa de las tres variantes (RMSE y R² en entrenamiento y prueba). Justificar cuál variante se selecciona como la mejor y por qué.
+
+------------------------------------------------------------------------
+
+## Árbol de Decisión
+
+### Variante 1
+
+#### Hiperparámetros y Justificación
+
+> **\[COMPLETAR\]** Indicar los valores de `cp`, `maxdepth` y cualquier otro parámetro usado. Explicar qué controla cada hiperparámetro y por qué se eligieron esos valores. Incluir gráfica del árbol resultante.
+
+#### Entrenamiento y Resultados
+
+> **\[COMPLETAR\]** Código de entrenamiento. Reportar RMSE y R² en entrenamiento y en prueba.
+
+### Variante 2
+
+#### Hiperparámetros y Justificación
+
+> **\[COMPLETAR\]** Indicar qué cambia respecto a la Variante 1 y justificar el cambio. Incluir gráfica del árbol resultante.
+
+#### Entrenamiento y Resultados
+
+> **\[COMPLETAR\]** Código de entrenamiento. Reportar RMSE y R² en entrenamiento y en prueba.
+
+### Variante 3
+
+#### Hiperparámetros y Justificación
+
+> **\[COMPLETAR\]** Indicar qué cambia respecto a las variantes anteriores y justificar el cambio. Incluir gráfica del árbol resultante.
+
+#### Entrenamiento y Resultados
+
+> **\[COMPLETAR\]** Código de entrenamiento. Reportar RMSE y R² en entrenamiento y en prueba.
+
+### Selección del Mejor Modelo de Árbol de Decisión
+
+> **\[COMPLETAR\]** Tabla comparativa de las tres variantes (RMSE y R² en entrenamiento y prueba). Justificar cuál variante se selecciona como la mejor y por qué.
+
+------------------------------------------------------------------------
+
+## Random Forest
+
+### Variante 1
+
+#### Hiperparámetros y Justificación
+
+> **\[COMPLETAR\]** Indicar los valores de `ntree`, `mtry` y cualquier otro parámetro usado. Explicar qué controla cada hiperparámetro y por qué se eligieron esos valores.
+
+#### Entrenamiento y Resultados
+
+> **\[COMPLETAR\]** Código de entrenamiento. Reportar RMSE y R² en entrenamiento y en prueba.
+
+### Variante 2
+
+#### Hiperparámetros y Justificación
+
+> **\[COMPLETAR\]** Indicar qué cambia respecto a la Variante 1 y justificar el cambio.
+
+#### Entrenamiento y Resultados
+
+> **\[COMPLETAR\]** Código de entrenamiento. Reportar RMSE y R² en entrenamiento y en prueba.
+
+### Variante 3
+
+#### Hiperparámetros y Justificación
+
+> **\[COMPLETAR\]** Indicar qué cambia respecto a las variantes anteriores y justificar el cambio. Incluir gráfica de importancia de variables (`varImpPlot`) e interpretar cuál predictor pesa más.
+
+#### Entrenamiento y Resultados
+
+> **\[COMPLETAR\]** Código de entrenamiento. Reportar RMSE y R² en entrenamiento y en prueba.
+
+### Selección del Mejor Modelo de Random Forest
+
+> **\[COMPLETAR\]** Tabla comparativa de las tres variantes (RMSE y R² en entrenamiento y prueba). Justificar cuál variante se selecciona como la mejor y por qué.
+
+------------------------------------------------------------------------
+
+## Comparación Final entre Algoritmos
+
+> **\[COMPLETAR\]** Tabla con el mejor modelo de cada algoritmo (RMSE y R² en prueba). Gráfica de valores reales vs. predichos para el mejor modelo general. Discutir cuál algoritmo obtuvo el mejor desempeño, si la ganancia de complejidad se justifica, y si algún modelo presenta sobreajuste que lo descalifique.
+
+------------------------------------------------------------------------
+
+## Referencias
+
+Al-Otaibi, A., Alotaibi, B., & Alzahrani, I. (2024). Divorce prediction using machine learning algorithms in Ha'il region, KSA. *Scientific Reports*, *14*, 481. https://www.nature.com/articles/s41598-023-50839-1
+
+Dogan, H., & Kılınç, E. (2025). Unpacking divorce: Feature-based machine learning interpretation of sociological patterns. *Social Science Computer Review*. https://journals.sagepub.com/doi/10.1177/08944393251386073
+
+Esteve, A., Lesthaeghe, R., López-Colás, J., & López-Gay, A. (2023). The changing social gradient of marriage and cohabitation in seven Latin American countries. *Social Science Research*, *114*, 102898. https://www.sciencedirect.com/science/article/pii/S0049089X23000534
+
+Fareed, S., Ghani, U., Ali, S., & Hussain, W. (2022). Predicting divorce prospect using ensemble learning: Support vector machine, linear model, and neural network. *Computational Intelligence and Neuroscience*, *2022*, 3687598. https://pmc.ncbi.nlm.nih.gov/articles/PMC9293523/
+
+Mbaye, E. H., Al-Kindi, M., & Al-Alawi, A. (2020). The effects of sociodemographic characteristics on divorce rates in Oman: Spatial modeling of marital separations. *Journal of Population Research*, *37*(3), 225–247. https://www.researchgate.net/publication/340111582
+
+Papageorgiou, I., & Velásquez, R. (2025). When the economy breaks down, do marriages follow? Crisis type and family dissolution across 83 countries (1990–2019). *Applied Research in Quality of Life*. https://link.springer.com/article/10.1007/s11482-025-10540-z
+
+Yöntem, M. K., Adem, K., İlhan, T., & Kılıçarslan, S. (2019). Divorce prediction using correlation based feature selection and artificial neural networks. *Nevşehir Hacı Bektaş Veli University Journal of ISS*, *9*(1), 259–273. https://www.researchgate.net/publication/373398266_Divorce_Prediction_Using_Machine_Learning_Methodology

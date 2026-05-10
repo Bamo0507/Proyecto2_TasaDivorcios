@@ -1,0 +1,10 @@
+Country,Continent,ISO_Code,Level,GDLCODE,Region,Year,shdi,healthindex,edindex,incindex
+Guatemala,America,GTM,National,GTMt,Total,2012,0.69,0.78,0.603,0.697
+Guatemala,America,GTM,Subnat,GTMr105,Central,2012,0.679,0.773,0.592,0.684
+Guatemala,America,GTM,Subnat,GTMr101,Metropolitan,2012,0.777,0.805,0.745,0.784
+Guatemala,America,GTM,Subnat,GTMr102,North,2012,0.626,0.783,0.526,0.596
+Guatemala,America,GTM,Subnat,GTMr107,North-Occidental,2012,0.629,0.755,0.504,0.654
+Guatemala,America,GTM,Subnat,GTMr103,North-Oriental,2012,0.65,0.768,0.549,0.653
+Guatemala,America,GTM,Subnat,GTMr108,Peten,2012,0.666,0.806,0.56,0.655
+Guatemala,America,GTM,Subnat,GTMr106,South-Occidental,2012,0.689,0.779,0.596,0.704
+Guatemala,America,GTM,Subnat,GTMr104,South-Oriental,2012,0.66,0.785,0.55,0.666

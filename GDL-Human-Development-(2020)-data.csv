@@ -1,0 +1,10 @@
+Country,Continent,ISO_Code,Level,GDLCODE,Region,Year,shdi,healthindex,edindex,incindex
+Guatemala,America,GTM,National,GTMt,Total,2020,0.689,0.769,0.598,0.712
+Guatemala,America,GTM,Subnat,GTMr105,Central,2020,0.703,0.761,0.623,0.733
+Guatemala,America,GTM,Subnat,GTMr101,Metropolitan,2020,0.8,0.792,0.815,0.793
+Guatemala,America,GTM,Subnat,GTMr102,North,2020,0.604,0.77,0.475,0.604
+Guatemala,America,GTM,Subnat,GTMr107,North-Occidental,2020,0.602,0.741,0.445,0.664
+Guatemala,America,GTM,Subnat,GTMr103,North-Oriental,2020,0.681,0.756,0.59,0.709
+Guatemala,America,GTM,Subnat,GTMr108,Peten,2020,0.665,0.801,0.559,0.656
+Guatemala,America,GTM,Subnat,GTMr106,South-Occidental,2020,0.665,0.775,0.537,0.707
+Guatemala,America,GTM,Subnat,GTMr104,South-Oriental,2020,0.67,0.771,0.557,0.702
