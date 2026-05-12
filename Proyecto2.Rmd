@@ -189,16 +189,28 @@ cat("Años cubiertos:", min(dataset_final$anio), "–", max(dataset_final$anio),
 
 ### Método de partición
 
-Dado que el dataset tiene una dimensión temporal explícita, cada observación corresponde a un departamento en un año específico, se utilizó una **partición temporal** en lugar de una partición aleatoria. Dividir aleatoriamente introduciría fuga de datos: el modelo podría entrenarse con información de 2021 y luego evaluarse en 2020, lo que no refleja ningún escenario de uso real.
+El dataset tiene una dimensión temporal explícita: cada observación corresponde a un departamento en un año específico. Una partición temporal estricta, entrenando en años anteriores y evaluando en los más recientes, concentraría el conjunto de prueba en los años 2019-2022, que fueron atípicos por los efectos de la pandemia. Evaluarse exclusivamente sobre años atípicos no ofrece una imagen representativa del desempeño real del modelo.
 
-La partición se define así:
-
-- **Entrenamiento:** años 2009 a 2018 — el modelo aprende los patrones históricos.
-- **Prueba:** años 2019 a 2022 — se evalúa qué tan bien generaliza a años que no vio.
+Por eso se optó por una **partición estratificada por año**: de cada uno de los 14 años se toma aleatoriamente el 70% de los departamentos para entrenamiento y el 30% restante para prueba. Esto garantiza que todos los años, incluidos los de pandemia, estén representados en ambos conjuntos, y permite comparar el comportamiento entre departamentos a lo largo de todo el período analizado.
 
 ```{r particion}
-train_set <- dataset_final %>% filter(anio <= 2018)
-test_set  <- dataset_final %>% filter(anio >  2018)
+set.seed(123)
+porciento <- 0.7
+
+años <- unique(dataset_final$anio)
+
+train_list <- list()
+test_list  <- list()
+
+for (a in años) {
+  año_data  <- dataset_final[dataset_final$anio == a, ]
+  idx_train <- sample(nrow(año_data), porciento * nrow(año_data))
+  train_list[[as.character(a)]] <- año_data[ idx_train, ]
+  test_list[[as.character(a)]]  <- año_data[-idx_train, ]
+}
+
+train_set <- do.call(rbind, train_list)
+test_set  <- do.call(rbind, test_list)
 
 cat("Entrenamiento:", nrow(train_set), "observaciones",
     sprintf("(%.1f%%)\n", 100 * nrow(train_set) / nrow(dataset_final)))
@@ -206,7 +218,7 @@ cat("Prueba:       ", nrow(test_set),  "observaciones",
     sprintf("(%.1f%%)\n", 100 * nrow(test_set)  / nrow(dataset_final)))
 ```
 
-El conjunto de entrenamiento cubre 10 años × 22 departamentos = **220 observaciones (71.4 %)** y el de prueba cubre 4 años × 22 departamentos = **88 observaciones (28.6 %)**. Dado que las observaciones están fijas a combinaciones de departamento y año, esta es la partición temporal más cercana a una división 70/30.
+Cada año aporta aproximadamente 15 departamentos al conjunto de entrenamiento y 7 al de prueba, resultando en una división cercana al 70/30 sobre las 308 observaciones totales.
 
 ### Análisis de valores atípicos en la variable respuesta
 
