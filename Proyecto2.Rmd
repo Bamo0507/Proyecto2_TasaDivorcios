@@ -99,13 +99,13 @@ norm_depto <- function(x) {
 ### Carga y limpieza de datos del INE
 
 ```{r ine_data}
-matrimonios_anual <- read_csv("../matrimonios_depto_mes.csv", show_col_types = FALSE) %>%
+matrimonios_anual <- read_csv("./matrimonios_depto_mes.csv", show_col_types = FALSE) %>%
   filter(nivel_geo == "departamento", is.na(mes)) %>%
   mutate(departamento = norm_depto(departamento)) %>%
   group_by(anio, departamento) %>%
   summarise(total_matrimonios = sum(valor, na.rm = TRUE), .groups = "drop")
 
-divorcios_anual <- read_csv("../divorcios_depto_mes.csv", show_col_types = FALSE) %>%
+divorcios_anual <- read_csv("./divorcios_depto_mes.csv", show_col_types = FALSE) %>%
   filter(nivel_geo == "departamento", is.na(mes)) %>%
   mutate(departamento = norm_depto(departamento)) %>%
   group_by(anio, departamento) %>%
@@ -349,9 +349,32 @@ r2_fn   <- function(actual, predicted) {
 
 #### Hiperparámetros y Justificación
 
-> **\[COMPLETAR\]** Indicar qué especificación del modelo se usa en esta variante (qué predictores incluye) y justificar por qué.
+Esta variante incluye únicamente los tres índices del GDL (healthindex, edindex, incindex) como predictores. Es el modelo más parsimonioso posible con las variables disponibles y sirve para medir cuánto poder explicativo aportan los factores estructurales de desarrollo humano por sí solos, sin considerar ni el departamento ni la tendencia temporal. Si el R² es bajo aquí, queda evidencia de que las diferencias entre departamentos o la evolución en el tiempo agregan información que los índices regionales no capturan.
 
 #### Entrenamiento y Resultados
+
+```{r}
+modelo_lm1 <- lm(
+  tasa_divorcio_por_100 ~ healthindex + edindex + incindex,
+  data = train_modelo
+)
+
+summary(modelo_lm1)
+
+pred_train_lm1 <- predict(modelo_lm1, newdata = train_modelo)
+pred_test_lm1  <- predict(modelo_lm1, newdata = test_modelo)
+
+rmse_train_lm1 <- rmse_fn(train_modelo$tasa_divorcio_por_100, pred_train_lm1)
+r2_train_lm1   <- r2_fn(train_modelo$tasa_divorcio_por_100,   pred_train_lm1)
+rmse_test_lm1  <- rmse_fn(test_modelo$tasa_divorcio_por_100,  pred_test_lm1)
+r2_test_lm1    <- r2_fn(test_modelo$tasa_divorcio_por_100,    pred_test_lm1)
+
+cat(sprintf("Variante 1 — Entrenamiento | RMSE: %.4f | R2: %.4f\n",
+            rmse_train_lm1, r2_train_lm1))
+cat(sprintf("Variante 1 — Prueba        | RMSE: %.4f | R2: %.4f\n",
+            rmse_test_lm1,  r2_test_lm1))
+```
+
 
 > **\[COMPLETAR\]** Código de entrenamiento. Reportar RMSE y R² en entrenamiento y en prueba.
 
@@ -359,25 +382,82 @@ r2_fn   <- function(actual, predicted) {
 
 #### Hiperparámetros y Justificación
 
-> **\[COMPLETAR\]** Indicar qué cambia respecto a la Variante 1 y justificar el cambio.
+Se agrega anio como predictor numérico. La variable año captura la tendencia temporal agregada en todos los departamentos: si la tasa de divorcio ha aumentado o disminuido de forma sistemática a lo largo del período 2009–2022, el coeficiente de anio lo cuantifica. Separar el efecto temporal del efecto de desarrollo humano permite ver si ambas dimensiones aportan de forma independiente. Esta variante sigue sin incluir departamento, por lo que todavía asume que todos los departamentos comparten la misma línea base de divorcio.
 
 #### Entrenamiento y Resultados
+```{r}
+modelo_lm2 <- lm(
+  tasa_divorcio_por_100 ~ healthindex + edindex + incindex + anio,
+  data = train_modelo
+)
 
-> **\[COMPLETAR\]** Código de entrenamiento. Reportar RMSE y R² en entrenamiento y en prueba.
+summary(modelo_lm2)
+
+pred_train_lm2 <- predict(modelo_lm2, newdata = train_modelo)
+pred_test_lm2  <- predict(modelo_lm2, newdata = test_modelo)
+
+rmse_train_lm2 <- rmse_fn(train_modelo$tasa_divorcio_por_100, pred_train_lm2)
+r2_train_lm2   <- r2_fn(train_modelo$tasa_divorcio_por_100,   pred_train_lm2)
+rmse_test_lm2  <- rmse_fn(test_modelo$tasa_divorcio_por_100,  pred_test_lm2)
+r2_test_lm2    <- r2_fn(test_modelo$tasa_divorcio_por_100,    pred_test_lm2)
+
+cat(sprintf("Variante 2 — Entrenamiento | RMSE: %.4f | R2: %.4f\n",
+            rmse_train_lm2, r2_train_lm2))
+cat(sprintf("Variante 2 — Prueba        | RMSE: %.4f | R2: %.4f\n",
+            rmse_test_lm2,  r2_test_lm2))
+```
 
 ### Variante 3
 
 #### Hiperparámetros y Justificación
 
-> **\[COMPLETAR\]** Indicar qué cambia respecto a las variantes anteriores y justificar el cambio.
+Se incorpora departamento como factor, lo que hace que R genere automáticamente 21 variables dummy (con un departamento de referencia para evitar multicolinealidad perfecta). Esto le permite al modelo asignar una línea base distinta a cada departamento, capturando las diferencias estructurales que los índices regionales del GDL no pueden distinguir: dos departamentos de la misma región administrativa comparten los mismos índices HDI pero pueden tener tasas de divorcio muy distintas. Este es el modelo más completo de los tres y el que tiene más parámetros, por lo que es también el más propenso al sobreajuste en un dataset de 308 observaciones.
+
 
 #### Entrenamiento y Resultados
 
-> **\[COMPLETAR\]** Código de entrenamiento. Reportar RMSE y R² en entrenamiento y en prueba.
+```{r}
+# --- Variante 3: modelo completo con departamento como factor ---
+train_modelo$departamento <- factor(train_modelo$departamento)
+test_modelo$departamento  <- factor(test_modelo$departamento,
+                                    levels = levels(train_modelo$departamento))
+
+modelo_lm3 <- lm(
+  tasa_divorcio_por_100 ~ departamento + anio + healthindex + edindex + incindex,
+  data = train_modelo
+)
+
+summary(modelo_lm3)
+
+pred_train_lm3 <- predict(modelo_lm3, newdata = train_modelo)
+pred_test_lm3  <- predict(modelo_lm3, newdata = test_modelo)
+
+rmse_train_lm3 <- rmse_fn(train_modelo$tasa_divorcio_por_100, pred_train_lm3)
+r2_train_lm3   <- r2_fn(train_modelo$tasa_divorcio_por_100,   pred_train_lm3)
+rmse_test_lm3  <- rmse_fn(test_modelo$tasa_divorcio_por_100,  pred_test_lm3)
+r2_test_lm3    <- r2_fn(test_modelo$tasa_divorcio_por_100,    pred_test_lm3)
+
+cat(sprintf("Variante 3 — Entrenamiento | RMSE: %.4f | R2: %.4f\n",
+            rmse_train_lm3, r2_train_lm3))
+cat(sprintf("Variante 3 — Prueba        | RMSE: %.4f | R2: %.4f\n",
+            rmse_test_lm3,  r2_test_lm3))
+```
 
 ### Selección del Mejor Modelo de Regresión Lineal
 
-> **\[COMPLETAR\]** Tabla comparativa de las tres variantes (RMSE y R² en entrenamiento y prueba). Justificar cuál variante se selecciona como la mejor y por qué.
+```{r}
+tabla_lm <- data.frame(
+  Variante   = c("V1: Solo HDI", "V2: HDI + año", "V3: HDI + año + departamento"),
+  RMSE_Train = c(rmse_train_lm1, rmse_train_lm2, rmse_train_lm3),
+  R2_Train   = c(r2_train_lm1,   r2_train_lm2,   r2_train_lm3),
+  RMSE_Test  = c(rmse_test_lm1,  rmse_test_lm2,  rmse_test_lm3),
+  R2_Test    = c(r2_test_lm1,    r2_test_lm2,    r2_test_lm3)
+)
+
+print(tabla_lm, digits = 4, row.names = FALSE)
+```
+
+Como nos podemos dar cuenta aquel model que llega a tener mejores metricas es el tercero, con un RMSE al momento de la prueba de 1.8333 y teniendo el mejor R^2 entre todos, siendo este de 0.7566.
 
 ------------------------------------------------------------------------
 
