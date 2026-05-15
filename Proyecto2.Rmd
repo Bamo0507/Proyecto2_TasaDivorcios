@@ -17,6 +17,8 @@ library(tidyverse)
 library(stringr)
 library(stringi)
 library(ggplot2)
+library(rpart)
+library(rpart.plot)
 ```
 
 ---
@@ -99,13 +101,13 @@ norm_depto <- function(x) {
 ### Carga y limpieza de datos del INE
 
 ```{r ine_data}
-matrimonios_anual <- read_csv("../matrimonios_depto_mes.csv", show_col_types = FALSE) %>%
+matrimonios_anual <- read_csv("matrimonios_depto_mes.csv", show_col_types = FALSE) %>%
   filter(nivel_geo == "departamento", is.na(mes)) %>%
   mutate(departamento = norm_depto(departamento)) %>%
   group_by(anio, departamento) %>%
   summarise(total_matrimonios = sum(valor, na.rm = TRUE), .groups = "drop")
 
-divorcios_anual <- read_csv("../divorcios_depto_mes.csv", show_col_types = FALSE) %>%
+divorcios_anual <- read_csv("divorcios_depto_mes.csv", show_col_types = FALSE) %>%
   filter(nivel_geo == "departamento", is.na(mes)) %>%
   mutate(departamento = norm_depto(departamento)) %>%
   group_by(anio, departamento) %>%
@@ -383,39 +385,201 @@ r2_fn   <- function(actual, predicted) {
 
 ## Árbol de Decisión
 
+El árbol de decisión predice la tasa de divorcio por cada 100 matrimonios a partir de cinco predictores: el departamento (captura dónde vive la población), el año (tendencia temporal), y los tres índices del GDL (healthindex, edindex, incindex), que aproximan condiciones socioeconómicas estrechamente relacionadas con los patrones demográficos, incluidos los rangos de edad al matrimonio y al divorcio documentados en el Proyecto 1. A diferencia de la regresión lineal, el árbol identifica umbrales naturales en estas variables, lo que le permite capturar relaciones no lineales sin necesidad de especificarlas de antemano.
+
+```{r tree_setup}
+abrev_depto <- c(
+  "alta verapaz"   = "AV",  "baja verapaz"   = "BV",
+  "chimaltenango"  = "CML", "chiquimula"     = "CQM",
+  "el progreso"    = "EP",  "escuintla"      = "ESC",
+  "guatemala"      = "GT",  "huehuetenango"  = "HUE",
+  "izabal"         = "IZA", "jalapa"         = "JAL",
+  "jutiapa"        = "JUT", "peten"          = "PET",
+  "quetzaltenango" = "QUE", "quiche"         = "QUI",
+  "retalhuleu"     = "RET", "sacatepequez"   = "SAC",
+  "san marcos"     = "SM",  "santa rosa"     = "SR",
+  "solola"         = "SOL", "suchitepequez"  = "SUC",
+  "totonicapan"    = "TOT", "zacapa"         = "ZAC"
+)
+
+niveles_depto <- sort(unique(dataset_final$departamento))
+train_modelo$departamento <- factor(train_modelo$departamento, levels = niveles_depto)
+test_modelo$departamento  <- factor(test_modelo$departamento,  levels = niveles_depto)
+
+levels(train_modelo$departamento) <- abrev_depto[levels(train_modelo$departamento)]
+levels(test_modelo$departamento)  <- abrev_depto[levels(test_modelo$departamento)]
+
+cat("Abreviaturas utilizadas:\n")
+print(abrev_depto)
+```
+
 ### Variante 1
 
 #### Hiperparámetros y Justificación
 
-> **\[COMPLETAR\]** Indicar los valores de `cp`, `maxdepth` y cualquier otro parámetro usado. Explicar qué controla cada hiperparámetro y por qué se eligieron esos valores. Incluir gráfica del árbol resultante.
+La primera variante usa los parámetros más conservadores del árbol para establecer una línea base controlada:
+
+- **`cp = 0.05`**: parámetro de complejidad (*complexity parameter*). Un nodo solo se divide si esa partición reduce el error relativo en al menos 5%. Es el valor por defecto de `rpart` y produce una poda implícita razonable.
+- **`maxdepth = 3`**: limita el árbol a tres niveles desde la raíz. Con 308 observaciones y 22 posibles valores de departamento, mayor profundidad incrementa el riesgo de memorizar el conjunto de entrenamiento.
+- **`minsplit = 10`**: exige al menos 10 observaciones en un nodo antes de intentar dividirlo, evitando ramas creadas a partir de muy pocos datos.
+
+Esta variante sirve como referencia: un árbol sin restricciones extremas pero tampoco sin control.
+
+```{r tree_v1}
+set.seed(123)
+tree_v1 <- rpart(
+  tasa_divorcio_por_100 ~ departamento + anio + healthindex + edindex + incindex,
+  data    = train_modelo,
+  method  = "anova",
+  control = rpart.control(cp = 0.05, maxdepth = 3, minsplit = 10)
+)
+
+rpart.plot(tree_v1, type = 4, extra = 101, fallen.leaves = TRUE,
+           main = "Árbol de Decisión — Variante 1 (cp=0.05, maxdepth=3)")
+```
 
 #### Entrenamiento y Resultados
 
-> **\[COMPLETAR\]** Código de entrenamiento. Reportar RMSE y R² en entrenamiento y en prueba.
+```{r tree_v1_metricas}
+pred_train_v1 <- predict(tree_v1, train_modelo)
+pred_test_v1  <- predict(tree_v1, test_modelo)
+
+rmse_train_v1 <- rmse_fn(train_modelo$tasa_divorcio_por_100, pred_train_v1)
+rmse_test_v1  <- rmse_fn(test_modelo$tasa_divorcio_por_100,  pred_test_v1)
+r2_train_v1   <- r2_fn(train_modelo$tasa_divorcio_por_100,   pred_train_v1)
+r2_test_v1    <- r2_fn(test_modelo$tasa_divorcio_por_100,    pred_test_v1)
+
+cat(sprintf("Entrenamiento — RMSE: %.4f | R²: %.4f\n", rmse_train_v1, r2_train_v1))
+cat(sprintf("Prueba        — RMSE: %.4f | R²: %.4f\n", rmse_test_v1,  r2_test_v1))
+```
 
 ### Variante 2
 
 #### Hiperparámetros y Justificación
 
-> **\[COMPLETAR\]** Indicar qué cambia respecto a la Variante 1 y justificar el cambio. Incluir gráfica del árbol resultante.
+La segunda variante relaja las restricciones para explorar si mayor capacidad expresiva mejora el desempeño en prueba o si el árbol simplemente memoriza el entrenamiento:
+
+- **`cp = 0.01`**: umbral cinco veces menor que en la Variante 1. Permite divisiones que aporten mejoras más pequeñas en el error, generando árboles más profundos y ramificados.
+- **`maxdepth = 5`**: duplica el límite de profundidad, permitiendo capturar interacciones más complejas entre departamento y los índices del GDL.
+- **`minsplit = 5`**: permite dividir nodos con solo 5 observaciones, añadiendo flexibilidad adicional pero incrementando el riesgo de sobreajuste.
+
+```{r tree_v2}
+set.seed(123)
+tree_v2 <- rpart(
+  tasa_divorcio_por_100 ~ departamento + anio + healthindex + edindex + incindex,
+  data    = train_modelo,
+  method  = "anova",
+  control = rpart.control(cp = 0.01, maxdepth = 5, minsplit = 5)
+)
+
+rpart.plot(tree_v2, type = 4, extra = 101, fallen.leaves = TRUE,
+           main = "Árbol de Decisión — Variante 2 (cp=0.01, maxdepth=5)")
+```
 
 #### Entrenamiento y Resultados
 
-> **\[COMPLETAR\]** Código de entrenamiento. Reportar RMSE y R² en entrenamiento y en prueba.
+```{r tree_v2_metricas}
+pred_train_v2 <- predict(tree_v2, train_modelo)
+pred_test_v2  <- predict(tree_v2, test_modelo)
+
+rmse_train_v2 <- rmse_fn(train_modelo$tasa_divorcio_por_100, pred_train_v2)
+rmse_test_v2  <- rmse_fn(test_modelo$tasa_divorcio_por_100,  pred_test_v2)
+r2_train_v2   <- r2_fn(train_modelo$tasa_divorcio_por_100,   pred_train_v2)
+r2_test_v2    <- r2_fn(test_modelo$tasa_divorcio_por_100,    pred_test_v2)
+
+cat(sprintf("Entrenamiento — RMSE: %.4f | R²: %.4f\n", rmse_train_v2, r2_train_v2))
+cat(sprintf("Prueba        — RMSE: %.4f | R²: %.4f\n", rmse_test_v2,  r2_test_v2))
+```
 
 ### Variante 3
 
 #### Hiperparámetros y Justificación
 
-> **\[COMPLETAR\]** Indicar qué cambia respecto a las variantes anteriores y justificar el cambio. Incluir gráfica del árbol resultante.
+La tercera variante aplica **poda formal mediante validación cruzada interna** de `rpart`, usando la regla del 1-SE (*one standard error rule*): entre todos los valores de `cp` cuyo error de validación cruzada está dentro de un error estándar del mínimo, se selecciona el mayor, es decir, el árbol más simple con desempeño estadísticamente comparable al óptimo.
+
+El procedimiento es:
+
+1. Crecer un árbol muy profundo (`cp = 0.0001`, `maxdepth = 15`) para explorar el espacio completo de divisiones.
+2. Leer la tabla de errores de validación cruzada (`cptable`).
+3. Identificar el `cp` óptimo con la regla 1-SE.
+4. Podar el árbol con `prune()` al `cp` óptimo.
+
+Este es el enfoque recomendado en la literatura para controlar el sobreajuste, ya que delega la elección del nivel de poda en evidencia empírica y no en un valor fijo elegido a priori.
+
+```{r tree_v3}
+set.seed(123)
+tree_full <- rpart(
+  tasa_divorcio_por_100 ~ departamento + anio + healthindex + edindex + incindex,
+  data    = train_modelo,
+  method  = "anova",
+  control = rpart.control(cp = 0.0001, maxdepth = 15, minsplit = 5)
+)
+
+plotcp(tree_full)
+
+cp_tabla <- tree_full$cptable
+min_xerr <- min(cp_tabla[, "xerror"])
+se_min   <- cp_tabla[which.min(cp_tabla[, "xerror"]), "xstd"]
+cp_opt   <- cp_tabla[cp_tabla[, "xerror"] <= min_xerr + se_min, "CP"][1]
+cat(sprintf("cp óptimo seleccionado (regla 1-SE): %.6f\n", cp_opt))
+
+tree_v3 <- prune(tree_full, cp = cp_opt)
+
+rpart.plot(tree_v3, type = 4, extra = 101, fallen.leaves = TRUE,
+           main = "Árbol de Decisión — Variante 3 (cp óptimo, regla 1-SE)")
+```
 
 #### Entrenamiento y Resultados
 
-> **\[COMPLETAR\]** Código de entrenamiento. Reportar RMSE y R² en entrenamiento y en prueba.
+```{r tree_v3_metricas}
+pred_train_v3 <- predict(tree_v3, train_modelo)
+pred_test_v3  <- predict(tree_v3, test_modelo)
+
+rmse_train_v3 <- rmse_fn(train_modelo$tasa_divorcio_por_100, pred_train_v3)
+rmse_test_v3  <- rmse_fn(test_modelo$tasa_divorcio_por_100,  pred_test_v3)
+r2_train_v3   <- r2_fn(train_modelo$tasa_divorcio_por_100,   pred_train_v3)
+r2_test_v3    <- r2_fn(test_modelo$tasa_divorcio_por_100,    pred_test_v3)
+
+cat(sprintf("Entrenamiento — RMSE: %.4f | R²: %.4f\n", rmse_train_v3, r2_train_v3))
+cat(sprintf("Prueba        — RMSE: %.4f | R²: %.4f\n", rmse_test_v3,  r2_test_v3))
+```
 
 ### Selección del Mejor Modelo de Árbol de Decisión
 
-> **\[COMPLETAR\]** Tabla comparativa de las tres variantes (RMSE y R² en entrenamiento y prueba). Justificar cuál variante se selecciona como la mejor y por qué.
+```{r tree_comparacion}
+comparacion_tree <- data.frame(
+  Variante   = c("V1: cp=0.05, maxdepth=3",
+                 "V2: cp=0.01, maxdepth=5",
+                 "V3: cp óptimo (1-SE)"),
+  RMSE_Train = round(c(rmse_train_v1, rmse_train_v2, rmse_train_v3), 4),
+  R2_Train   = round(c(r2_train_v1,   r2_train_v2,   r2_train_v3),   4),
+  RMSE_Test  = round(c(rmse_test_v1,  rmse_test_v2,  rmse_test_v3),  4),
+  R2_Test    = round(c(r2_test_v1,    r2_test_v2,    r2_test_v3),    4)
+)
+
+knitr::kable(
+  comparacion_tree,
+  col.names = c("Variante", "RMSE Train", "R² Train", "RMSE Test", "R² Test"),
+  caption   = "Comparación de variantes — Árbol de Decisión"
+)
+
+mejor_idx <- which.min(comparacion_tree$RMSE_Test)
+caida_r2  <- comparacion_tree$R2_Train[mejor_idx] - comparacion_tree$R2_Test[mejor_idx]
+
+cat(sprintf("\nMejor variante por RMSE Test: %s\n", comparacion_tree$Variante[mejor_idx]))
+cat(sprintf("RMSE Test: %.4f | R² Test: %.4f\n",
+            comparacion_tree$RMSE_Test[mejor_idx],
+            comparacion_tree$R2_Test[mejor_idx]))
+cat(sprintf("Caída de R² (train → test): %.4f puntos porcentuales\n", caida_r2 * 100))
+
+if (caida_r2 > 0.10) {
+  cat("Advertencia: caída de R² mayor al 10% — posible sobreajuste.\n")
+} else {
+  cat("Sin sobreajuste significativo detectado.\n")
+}
+```
+
+La Variante 3 es la opción metodológicamente más sólida porque la elección de `cp` surge de los propios datos de entrenamiento (validación cruzada interna) y no de un valor fijo. Si su RMSE en prueba es comparable al de las otras variantes, se selecciona como el mejor árbol por su menor riesgo de sobreajuste. En caso de que la Variante 1 o 2 presente un RMSE notablemente menor sin una caída de R² superior a 10 puntos, se priorizaría esa variante.
 
 ------------------------------------------------------------------------
 
