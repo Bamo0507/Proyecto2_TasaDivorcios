@@ -345,6 +345,33 @@ r2_fn   <- function(actual, predicted) {
 
 ------------------------------------------------------------------------
 
+
+```{r tree_setup}
+abrev_depto <- c(
+  "alta verapaz"   = "AV",  "baja verapaz"   = "BV",
+  "chimaltenango"  = "CML", "chiquimula"     = "CQM",
+  "el progreso"    = "EP",  "escuintla"      = "ESC",
+  "guatemala"      = "GT",  "huehuetenango"  = "HUE",
+  "izabal"         = "IZA", "jalapa"         = "JAL",
+  "jutiapa"        = "JUT", "peten"          = "PET",
+  "quetzaltenango" = "QUE", "quiche"         = "QUI",
+  "retalhuleu"     = "RET", "sacatepequez"   = "SAC",
+  "san marcos"     = "SM",  "santa rosa"     = "SR",
+  "solola"         = "SOL", "suchitepequez"  = "SUC",
+  "totonicapan"    = "TOT", "zacapa"         = "ZAC"
+)
+
+niveles_depto <- sort(unique(dataset_final$departamento))
+train_modelo$departamento <- factor(train_modelo$departamento, levels = niveles_depto)
+test_modelo$departamento  <- factor(test_modelo$departamento,  levels = niveles_depto)
+
+levels(train_modelo$departamento) <- abrev_depto[levels(train_modelo$departamento)]
+levels(test_modelo$departamento)  <- abrev_depto[levels(test_modelo$departamento)]
+
+cat("Abreviaturas utilizadas:\n")
+print(abrev_depto)
+```
+
 ## Regresión Lineal Múltiple
 
 ### Variante 1
@@ -386,40 +413,13 @@ r2_fn   <- function(actual, predicted) {
 ## Árbol de Decisión
 
 El árbol de decisión predice la tasa de divorcio por cada 100 matrimonios a partir de cinco predictores: el departamento (captura dónde vive la población), el año (tendencia temporal), y los tres índices del GDL (healthindex, edindex, incindex), que aproximan condiciones socioeconómicas estrechamente relacionadas con los patrones demográficos, incluidos los rangos de edad al matrimonio y al divorcio documentados en el Proyecto 1. A diferencia de la regresión lineal, el árbol identifica umbrales naturales en estas variables, lo que le permite capturar relaciones no lineales sin necesidad de especificarlas de antemano.
-
-```{r tree_setup}
-abrev_depto <- c(
-  "alta verapaz"   = "AV",  "baja verapaz"   = "BV",
-  "chimaltenango"  = "CML", "chiquimula"     = "CQM",
-  "el progreso"    = "EP",  "escuintla"      = "ESC",
-  "guatemala"      = "GT",  "huehuetenango"  = "HUE",
-  "izabal"         = "IZA", "jalapa"         = "JAL",
-  "jutiapa"        = "JUT", "peten"          = "PET",
-  "quetzaltenango" = "QUE", "quiche"         = "QUI",
-  "retalhuleu"     = "RET", "sacatepequez"   = "SAC",
-  "san marcos"     = "SM",  "santa rosa"     = "SR",
-  "solola"         = "SOL", "suchitepequez"  = "SUC",
-  "totonicapan"    = "TOT", "zacapa"         = "ZAC"
-)
-
-niveles_depto <- sort(unique(dataset_final$departamento))
-train_modelo$departamento <- factor(train_modelo$departamento, levels = niveles_depto)
-test_modelo$departamento  <- factor(test_modelo$departamento,  levels = niveles_depto)
-
-levels(train_modelo$departamento) <- abrev_depto[levels(train_modelo$departamento)]
-levels(test_modelo$departamento)  <- abrev_depto[levels(test_modelo$departamento)]
-
-cat("Abreviaturas utilizadas:\n")
-print(abrev_depto)
-```
-
 ### Variante 1
 
 #### Hiperparámetros y Justificación
 
 La primera variante usa los parámetros más conservadores del árbol para establecer una línea base controlada:
 
-- **`cp = 0.05`**: parámetro de complejidad (*complexity parameter*). Un nodo solo se divide si esa partición reduce el error relativo en al menos 5%. Es el valor por defecto de `rpart` y produce una poda implícita razonable.
+- **`cp = 0.05`**: parámetro de complejidad (*complexity parameter*). Un nodo solo se divide si esa partición reduce el error relativo en al menos 5%. Este valor relativamente alto limita la cantidad de divisiones, evitando ramas que solo aporten mejoras marginales y reduciendo el riesgo de sobreajuste, especialmente con un dataset de 308 observaciones.
 - **`maxdepth = 3`**: limita el árbol a tres niveles desde la raíz. Con 308 observaciones y 22 posibles valores de departamento, mayor profundidad incrementa el riesgo de memorizar el conjunto de entrenamiento.
 - **`minsplit = 10`**: exige al menos 10 observaciones en un nodo antes de intentar dividirlo, evitando ramas creadas a partir de muy pocos datos.
 
@@ -461,7 +461,7 @@ La segunda variante relaja las restricciones para explorar si mayor capacidad ex
 
 - **`cp = 0.01`**: umbral cinco veces menor que en la Variante 1. Permite divisiones que aporten mejoras más pequeñas en el error, generando árboles más profundos y ramificados.
 - **`maxdepth = 5`**: duplica el límite de profundidad, permitiendo capturar interacciones más complejas entre departamento y los índices del GDL.
-- **`minsplit = 5`**: permite dividir nodos con solo 5 observaciones, añadiendo flexibilidad adicional pero incrementando el riesgo de sobreajuste.
+- **`minsplit = 5`**: permite dividir nodos con solo 5 observaciones, añadiendo flexibilidad adicional pero incrementando el riesgo de sobreajuste mejorando legibilidad.
 
 ```{r tree_v2}
 set.seed(123)
@@ -490,6 +490,19 @@ r2_test_v2    <- r2_fn(test_modelo$tasa_divorcio_por_100,    pred_test_v2)
 cat(sprintf("Entrenamiento — RMSE: %.4f | R²: %.4f\n", rmse_train_v2, r2_train_v2))
 cat(sprintf("Prueba        — RMSE: %.4f | R²: %.4f\n", rmse_test_v2,  r2_test_v2))
 ```
+
+Lectura:
+Raíz (7.7) → ¿departamento es AV,CML,ESC...? 
+  → GT no está en esa lista → va a la DERECHA (11)
+
+Nodo (11) → ¿incindex < 0.71?
+  → 0.82 NO es < 0.71 → va a la DERECHA (15)
+
+Nodo (15) → ¿incindex < 0.8?
+  → 0.82 NO es < 0.8 → va a la DERECHA (23)
+
+Hoja: predicción = 23 divorcios por cada 100 matrimonios
+
 
 ### Variante 3
 
@@ -571,15 +584,12 @@ cat(sprintf("RMSE Test: %.4f | R² Test: %.4f\n",
             comparacion_tree$RMSE_Test[mejor_idx],
             comparacion_tree$R2_Test[mejor_idx]))
 cat(sprintf("Caída de R² (train → test): %.4f puntos porcentuales\n", caida_r2 * 100))
-
-if (caida_r2 > 0.10) {
-  cat("Advertencia: caída de R² mayor al 10% — posible sobreajuste.\n")
-} else {
-  cat("Sin sobreajuste significativo detectado.\n")
-}
 ```
 
-La Variante 3 es la opción metodológicamente más sólida porque la elección de `cp` surge de los propios datos de entrenamiento (validación cruzada interna) y no de un valor fijo. Si su RMSE en prueba es comparable al de las otras variantes, se selecciona como el mejor árbol por su menor riesgo de sobreajuste. En caso de que la Variante 1 o 2 presente un RMSE notablemente menor sin una caída de R² superior a 10 puntos, se priorizaría esa variante.
+La Variante 3 es la opción metodológicamente más sólida porque la elección de `cp` surge de los propios datos de entrenamiento (validación cruzada interna) y no de un valor fijo. 
+Si su RMSE en prueba es comparable al de las otras variantes, se selecciona como el mejor árbol por su menor riesgo de sobreajuste. En caso de que la Variante 1 o 2 presente un RMSE notablemente mayor sin con poca caida de R² llegando a 10 o 20 puntos, se priorizaría esa variante.
+Por otro lado la Variante 2, aunque tienen un mayor RMSE en prueba, tiene una caída de R² de aproximadamente 10 puntos porcentuales, lo que sugiere que el aumento de complejidad no se traduce en un sobreajuste severo.
+En ese caso, se podría considerar la Variante 2 como una opción viable si se busca un modelo con alta legibilidad y capacidad de captura de interacciones, siempre que se acepte un RMSE ligeramente mayor a cambio de un R² más alto en prueba.
 
 ------------------------------------------------------------------------
 
