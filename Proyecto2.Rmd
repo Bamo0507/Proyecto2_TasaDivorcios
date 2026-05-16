@@ -19,6 +19,7 @@ library(stringi)
 library(ggplot2)
 library(rpart)
 library(rpart.plot)
+library(randomForest)
 ```
 
 ---
@@ -595,39 +596,181 @@ En ese caso, se podría considerar la Variante 2 como una opción viable si se b
 
 ## Random Forest
 
+Random Forest extiende el árbol de decisión entrenando un ensamble de árboles, cada uno sobre una muestra bootstrap del conjunto de entrenamiento y evaluando solo un subconjunto aleatorio de predictores en cada corte. La predicción final es el promedio de las 500 predicciones individuales. Esto reduce la varianza del modelo sin incrementar el sesgo, lo que lo hace especialmente robusto frente a los valores atípicos del departamento de Guatemala que ya identificamos en el análisis exploratorio.
+
+### Justificación de Hiperparámetros
+
+Los tres hiperparámetros centrales de Random Forest son `ntree`, `mtry` y `nodesize`. La estrategia de las tres variantes es explorarlos de forma escalonada: primero el comportamiento del algoritmo sin intervención, luego ajuste manual, y finalmente búsqueda automática basada en datos.
+
+**`ntree` (número de árboles):** se usa 500 como valor base en las Variantes 1 y 2, que es el estándar de la literatura para datasets de este tamaño. Con 308 observaciones el error OOB converge bien antes de los 500 árboles, así que agregar más no mejora las métricas. En la Variante 3 se sube a 1000 únicamente porque al incluir el análisis de importancia de variables (`varImpPlot`), más árboles producen estimaciones de `%IncMSE` más estables y confiables para la interpretación.
+
+**`mtry` (predictores candidatos por corte):** es el hiperparámetro más determinante de Random Forest. Con 5 predictores disponibles, el default de R para regresión es `floor(5/3) = 1`. La Variante 1 lo usa como punto de partida, la Variante 2 lo sube a 3 manualmente para explorar si más poder por árbol compensa la menor diversidad del ensamble, y la Variante 3 delega la elección en `tuneRF`, que prueba todos los candidatos posibles y selecciona el que minimiza el error OOB sin necesitar tocar el conjunto de prueba.
+
+**`nodesize` (mínimo de observaciones por nodo terminal):** controla la profundidad implícita de cada árbol. Se usa 5 en las Variantes 1 y 3 como valor conservador adecuado para un dataset de 308 observaciones. En la Variante 2 se baja a 3 para que los árboles crezcan más profundo y capturen interacciones más finas, aprovechando que el promedio del ensamble amortigua el sobreajuste que eso causaría en un árbol individual. En la Variante 3 se fija de vuelta en 5 para que el único parámetro libre sea `mtry`, manteniendo la comparación limpia.
+
 ### Variante 1
 
 #### Hiperparámetros y Justificación
 
-> **\[COMPLETAR\]** Indicar los valores de `ntree`, `mtry` y cualquier otro parámetro usado. Explicar qué controla cada hiperparámetro y por qué se eligieron esos valores.
+Esta variante entrena el Random Forest con los parámetros más conservadores para establecer una línea base reproducible:
+
+- **`ntree = 500`**: número de árboles en el ensamble. 500 es el valor estándar de la literatura y suficiente para que el error OOB se estabilice con datasets de este tamaño. Más árboles reducen varianza pero con rendimientos decrecientes.
+- **`mtry = 1`**: número de predictores candidatos evaluados en cada corte. El valor por defecto de `randomForest` para regresión es `floor(p/3) = floor(5/3) = 1`. Con un predictor por corte, cada árbol toma decisiones casi independientes entre sí, maximizando la diversidad del ensamble pero limitando la expresividad de cada árbol individual.
+- **`nodesize = 5`**: mínimo de observaciones en un nodo terminal. Limita la profundidad implícita de cada árbol, reduciendo el sobreajuste. Con 308 observaciones es un valor conservador razonable.
+
+Esta configuración sirve para saber qué tan bien funciona el algoritmo "sin tocar nada", antes de ajustar hiperparámetros.
+
+```{r rf_v1}
+set.seed(123)
+rf_v1 <- randomForest(
+  tasa_divorcio_por_100 ~ departamento + anio + healthindex + edindex + incindex,
+  data       = train_modelo,
+  ntree      = 500,
+  mtry       = 1,
+  nodesize   = 5,
+  importance = TRUE
+)
+```
 
 #### Entrenamiento y Resultados
 
-> **\[COMPLETAR\]** Código de entrenamiento. Reportar RMSE y R² en entrenamiento y en prueba.
+```{r rf_v1_metricas}
+pred_train_rf1 <- predict(rf_v1, train_modelo)
+pred_test_rf1  <- predict(rf_v1, test_modelo)
+
+rmse_train_rf1 <- rmse_fn(train_modelo$tasa_divorcio_por_100, pred_train_rf1)
+rmse_test_rf1  <- rmse_fn(test_modelo$tasa_divorcio_por_100,  pred_test_rf1)
+r2_train_rf1   <- r2_fn(train_modelo$tasa_divorcio_por_100,   pred_train_rf1)
+r2_test_rf1    <- r2_fn(test_modelo$tasa_divorcio_por_100,    pred_test_rf1)
+
+cat(sprintf("Entrenamiento — RMSE: %.4f | R²: %.4f\n", rmse_train_rf1, r2_train_rf1))
+cat(sprintf("Prueba        — RMSE: %.4f | R²: %.4f\n", rmse_test_rf1,  r2_test_rf1))
+```
 
 ### Variante 2
 
 #### Hiperparámetros y Justificación
 
-> **\[COMPLETAR\]** Indicar qué cambia respecto a la Variante 1 y justificar el cambio.
+La segunda variante aumenta la capacidad expresiva de cada árbol individual manteniendo el mismo número de árboles:
+
+- **`ntree = 500`**: igual que en la Variante 1 para que la comparación aísle el efecto de los otros parámetros.
+- **`mtry = 3`**: sube de 1 a 3, es decir, cada corte evalúa el 60% de los predictores disponibles. Esto da a cada árbol más oportunidades de elegir el mejor predictor en cada nodo, lo que hace árboles individualmente más fuertes pero con mayor correlación entre sí. La pregunta que responde esta variante es si más poder por árbol compensa la menor diversidad del ensamble.
+- **`nodesize = 3`**: permite nodos terminales más pequeños, lo que produce árboles más profundos que capturan relaciones más finas. Es el equivalente a bajar `cp` y subir `maxdepth` en el árbol de decisión individual, pero con la protección del promedio del ensamble contra el sobreajuste.
+
+```{r rf_v2}
+set.seed(123)
+rf_v2 <- randomForest(
+  tasa_divorcio_por_100 ~ departamento + anio + healthindex + edindex + incindex,
+  data       = train_modelo,
+  ntree      = 500,
+  mtry       = 3,
+  nodesize   = 3,
+  importance = TRUE
+)
+```
 
 #### Entrenamiento y Resultados
 
-> **\[COMPLETAR\]** Código de entrenamiento. Reportar RMSE y R² en entrenamiento y en prueba.
+```{r rf_v2_metricas}
+pred_train_rf2 <- predict(rf_v2, train_modelo)
+pred_test_rf2  <- predict(rf_v2, test_modelo)
+
+rmse_train_rf2 <- rmse_fn(train_modelo$tasa_divorcio_por_100, pred_train_rf2)
+rmse_test_rf2  <- rmse_fn(test_modelo$tasa_divorcio_por_100,  pred_test_rf2)
+r2_train_rf2   <- r2_fn(train_modelo$tasa_divorcio_por_100,   pred_train_rf2)
+r2_test_rf2    <- r2_fn(test_modelo$tasa_divorcio_por_100,    pred_test_rf2)
+
+cat(sprintf("Entrenamiento — RMSE: %.4f | R²: %.4f\n", rmse_train_rf2, r2_train_rf2))
+cat(sprintf("Prueba        — RMSE: %.4f | R²: %.4f\n", rmse_test_rf2,  r2_test_rf2))
+```
 
 ### Variante 3
 
 #### Hiperparámetros y Justificación
 
-> **\[COMPLETAR\]** Indicar qué cambia respecto a las variantes anteriores y justificar el cambio. Incluir gráfica de importancia de variables (`varImpPlot`) e interpretar cuál predictor pesa más.
+La tercera variante aplica **búsqueda automática del `mtry` óptimo** usando `tuneRF`, que prueba distintos valores y selecciona el que minimiza el error OOB (*out-of-bag*) sin necesidad de tocar el conjunto de prueba. Además incorpora la gráfica de importancia de variables para interpretar qué predictores pesan más en la predicción.
+
+- **`ntree = 1000`**: se duplican los árboles respecto a las variantes anteriores. Con más árboles, las estimaciones de importancia de variables se estabilizan y el error OOB converge con mayor precisión. El costo computacional es aceptable dado el tamaño del dataset.
+- **`mtry = mtry_opt`**: valor seleccionado por `tuneRF` entre los candidatos {1, 2, 3, 4, 5}. `tuneRF` entrena un bosque por cada candidato y escoge el `mtry` cuyo OOB error es mínimo, delegando la decisión en evidencia empírica en lugar de un valor fijo a priori.
+- **`nodesize = 5`**: vuelve al valor de la Variante 1 para que el único cambio libre sea `mtry`, permitiendo una comparación limpia.
+- **`varImpPlot`**: muestra el `%IncMSE` (*percentage increase in MSE*) de cada predictor, que mide cuánto sube el error del modelo cuando se permuta aleatoriamente esa variable. Un valor alto indica que el modelo depende fuertemente de ese predictor para hacer buenas predicciones.
+
+```{r rf_v3_tune}
+set.seed(123)
+tune_rf <- tuneRF(
+  x          = train_modelo[, c("departamento", "anio", "healthindex", "edindex", "incindex")],
+  y          = train_modelo$tasa_divorcio_por_100,
+  ntreeTry   = 500,
+  stepFactor = 1.5,
+  improve    = 0.01,
+  trace      = TRUE,
+  plot       = TRUE
+)
+mtry_opt <- tune_rf[which.min(tune_rf[, "OOBError"]), "mtry"]
+cat(sprintf("mtry óptimo seleccionado por tuneRF: %d\n", mtry_opt))
+```
+
+```{r rf_v3}
+set.seed(123)
+rf_v3 <- randomForest(
+  tasa_divorcio_por_100 ~ departamento + anio + healthindex + edindex + incindex,
+  data       = train_modelo,
+  ntree      = 1000,
+  mtry       = mtry_opt,
+  nodesize   = 5,
+  importance = TRUE
+)
+
+varImpPlot(rf_v3,
+           main = "Importancia de Variables — Random Forest Variante 3",
+           type = 1)
+```
 
 #### Entrenamiento y Resultados
 
-> **\[COMPLETAR\]** Código de entrenamiento. Reportar RMSE y R² en entrenamiento y en prueba.
+```{r rf_v3_metricas}
+pred_train_rf3 <- predict(rf_v3, train_modelo)
+pred_test_rf3  <- predict(rf_v3, test_modelo)
+
+rmse_train_rf3 <- rmse_fn(train_modelo$tasa_divorcio_por_100, pred_train_rf3)
+rmse_test_rf3  <- rmse_fn(test_modelo$tasa_divorcio_por_100,  pred_test_rf3)
+r2_train_rf3   <- r2_fn(train_modelo$tasa_divorcio_por_100,   pred_train_rf3)
+r2_test_rf3    <- r2_fn(test_modelo$tasa_divorcio_por_100,    pred_test_rf3)
+
+cat(sprintf("Entrenamiento — RMSE: %.4f | R²: %.4f\n", rmse_train_rf3, r2_train_rf3))
+cat(sprintf("Prueba        — RMSE: %.4f | R²: %.4f\n", rmse_test_rf3,  r2_test_rf3))
+```
 
 ### Selección del Mejor Modelo de Random Forest
 
-> **\[COMPLETAR\]** Tabla comparativa de las tres variantes (RMSE y R² en entrenamiento y prueba). Justificar cuál variante se selecciona como la mejor y por qué.
+```{r rf_comparacion}
+comparacion_rf <- data.frame(
+  Variante   = c("V1: mtry=1, nodesize=5, ntree=500",
+                 "V2: mtry=3, nodesize=3, ntree=500",
+                 "V3: mtry=tuneRF, nodesize=5, ntree=1000"),
+  RMSE_Train = round(c(rmse_train_rf1, rmse_train_rf2, rmse_train_rf3), 4),
+  R2_Train   = round(c(r2_train_rf1,   r2_train_rf2,   r2_train_rf3),   4),
+  RMSE_Test  = round(c(rmse_test_rf1,  rmse_test_rf2,  rmse_test_rf3),  4),
+  R2_Test    = round(c(r2_test_rf1,    r2_test_rf2,    r2_test_rf3),    4)
+)
+
+knitr::kable(
+  comparacion_rf,
+  col.names = c("Variante", "RMSE Train", "R² Train", "RMSE Test", "R² Test"),
+  caption   = "Comparación de variantes — Random Forest"
+)
+
+mejor_idx_rf <- which.min(comparacion_rf$RMSE_Test)
+caida_r2_rf  <- comparacion_rf$R2_Train[mejor_idx_rf] - comparacion_rf$R2_Test[mejor_idx_rf]
+
+cat(sprintf("\nMejor variante por RMSE Test: %s\n", comparacion_rf$Variante[mejor_idx_rf]))
+cat(sprintf("RMSE Test: %.4f | R² Test: %.4f\n",
+            comparacion_rf$RMSE_Test[mejor_idx_rf],
+            comparacion_rf$R2_Test[mejor_idx_rf]))
+cat(sprintf("Caída de R² (train → test): %.4f puntos porcentuales\n", caida_r2_rf * 100))
+```
+
+La Variante 3 es metodológicamente la más sólida porque la elección de `mtry` emerge de los propios datos de entrenamiento mediante el error OOB, sin intervención manual ni uso del conjunto de prueba. Si su RMSE en prueba es comparable al de las otras variantes, se selecciona como el mejor modelo de Random Forest por su proceso de selección más riguroso. En caso de que una variante más simple muestre RMSE similar con menor caída de R², se preferiría la más simple siguiendo el principio de parsimonia.
 
 ------------------------------------------------------------------------
 
