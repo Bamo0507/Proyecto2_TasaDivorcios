@@ -34,6 +34,22 @@ Con esto en mente, comparar cifras absolutas de divorcio o matrimonio entre depa
 
 ---
 
+## Objetivos
+
+### Objetivo general
+
+Construir y evaluar modelos de aprendizaje supervisado que predigan la tasa de divorcio por cada 100 matrimonios a nivel departamental en Guatemala durante el período 2009-2022, e identificar qué factores estructurales y socioeconómicos explican mejor las diferencias entre departamentos.
+
+### Objetivos específicos
+
+1. Construir un dataset integrado a partir de los registros del INE (matrimonios y divorcios por departamento) y los índices de desarrollo humano subnacional del Global Data Lab para el período 2009-2022.
+
+2. Implementar y comparar tres familias de algoritmos (Regresión Lineal Múltiple, Árbol de Decisión y Random Forest) entrenando al menos tres variantes de cada uno con distintos hiperparámetros o especificaciones.
+
+3. Evaluar el desempeño de cada variante usando RMSE y R^2 sobre un conjunto de prueba estratificado por año, identificando el mejor modelo dentro de cada algoritmo según el criterio definido.
+
+---
+
 ## Antecedentes
 
 ¿Qué hace que un matrimonio termine en divorcio? Para tratar de responder a este tipo de preguntas, recientemente ha surgido el uso de algoritmos de machine learning que permiten identificar patrones y realizar predicciones. Como equipo, consideramos que este es uno de los fenómenos más relevantes a estudiar actualmente, en donde vemos cómo los matrimonios son más propensos a terminar en divorcio. A continuación se presentan algunos de los estudios más relevantes encontrados en relación al tema. 
@@ -64,17 +80,19 @@ Tomando todo esto en consideración y dada la limitación del dataset del INE tr
 
 Dado el perfil del dataset 308 observaciones a nivel departamento-año, variable respuesta continua, mezcla de predictores numéricos y una variable categórica— se seleccionaron tres algoritmos para comparar:
 
+Para llegar a estos tres algoritmos también se consideraron KNN y SVM, que aparecen en estudios similares de la literatura revisada. Sin embargo, se descartaron porque los estudios de Al-Otaibi et al. (2024) y Dogan y Kılınç (2025) muestran de forma consistente que Random Forest le gana a estos enfoques en problemas demográficos con perfiles parecidos al nuestro.
+
 ### Regresión Lineal Múltiple
 
-El modelo más simple de los tres y el que sirve como línea base. Permite cuantificar directamente el peso de cada predictor sobre la tasa de divorcio y es fácil de interpretar. Su limitación real es el supuesto de linealidad: los datos del INE ya mostraron asimetría positiva en la distribución de valores, lo que sugiere que las relaciones probablemente no son lineales. Aun así, sirve como referencia para evaluar si los modelos más complejos realmente aportan algo, y de si realmente existe una relación lineal entre las variables predictoras.
+El modelo más simple de los tres y el que sirve como línea base. Se eligió porque nos permite interpretar directamente cuáles son las variables predictoras con mayor impacto sobre la tasa de divorcio: el peso de cada predictor queda cuantificado en su coeficiente, y la significancia estadística nos dice si ese efecto es robusto. Además, como estamos trabajando con relativamente pocas variables predictoras, un modelo lineal puede adaptarse bien sin tantos riesgos de sobreajuste. Su limitación principal es el supuesto de linealidad: los datos del INE ya mostraron asimetría positiva en la distribución de valores, lo que nos hace pensar que las relaciones probablemente no son completamente lineales. Aun así, nos sirve como referencia para evaluar si los modelos más complejos realmente aportan algo y si existe una relación lineal entre las variables predictoras.
 
 ### Árbol de Decisión
 
-Captura relaciones no lineales y umbrales naturales sin necesidad de especificarlos de antemano. Por ejemplo, puede detectar por sí solo que los departamentos por debajo de cierto volumen de matrimonios se comportan de manera distinta. No requiere normalización de variables y su estructura de reglas es directamente interpretable. El riesgo es el sobreajuste cuando la profundidad no se controla, por lo que se aplicará poda mediante validación cruzada. Así mismo estaremos comparando los resultados entre el dataset de entrenamiento y el de prueba para poder validar si hay un declive considerable en las métricas cuando pasamos al dataset de prueba. 
+Se eligió como un buen punto de partida entre los modelos no lineales. Captura relaciones no lineales y umbrales naturales sin que tengamos que especificarlos: por ejemplo, puede detectar por sí solo que los departamentos por debajo de cierto volumen de matrimonios se comportan distinto. Considerando que trabajamos con pocas variables predictoras, un modelo más simple que Random Forest, como un único árbol de decisión, podría ser suficiente para capturar las interacciones relevantes. No requiere normalización de variables y su estructura de reglas es fácil de leer. El riesgo es el sobreajuste cuando la profundidad no se controla, así que vamos a aplicar poda mediante validación cruzada. También vamos a comparar los resultados entre el dataset de entrenamiento y el de prueba para validar si hay un declive considerable en las métricas al pasar al dataset de prueba.
 
 ### Random Forest
 
-De los tres, es el que tiene mayores expectativas de desempeño para este problema. Maneja bien la combinación de variables numéricas y categóricas, no asume ninguna forma funcional, y es robusto frente a valores atípicos. Al-Otaibi et al. (2024) y Dogan y Kılınç (2025) reportan consistentemente que Random Forest supera a modelos individuales en problemas demográficos con perfiles similares al nuestro. Adicionalmente, el índice de importancia de variables (Gini importance) permitirá identificar qué predictores, departamento, tendencia temporal o indicadores de desarrollo humano, pesan más en la predicción, lo cual es una conclusión sustantiva sobre Guatemala más allá de la métrica de error.
+De los tres, es el que tiene más expectativas de buen desempeño para este problema, principalmente porque fue el algoritmo que mejores resultados presentó en los estudios revisados en los antecedentes. Al-Otaibi et al. (2024) y Dogan y Kılınç (2025) reportan de forma consistente que Random Forest le gana a modelos individuales en problemas demográficos con perfiles similares al nuestro. Maneja bien la combinación de variables numéricas y categóricas, no asume ninguna forma funcional y es robusto frente a valores atípicos. Además, el índice de importancia de variables (Gini importance) nos va a permitir identificar qué predictores (departamento, tendencia temporal o indicadores de desarrollo humano) pesan más en la predicción, lo cual nos da una conclusión sustantiva sobre Guatemala más allá de la métrica de error.
 
 ------------------------------------------------------------------------
 
@@ -158,7 +176,7 @@ region_map <- tibble(
 )
 ```
 
-### Join final y dataset completo
+### Dataset Completo
 
 Los cuatro índices que provienen del GDL se interpretan como valores entre 0 y 1, donde valores más cercanos a 1 indican mejores condiciones:
 
@@ -194,7 +212,7 @@ cat("Años cubiertos:", min(dataset_final$anio), "–", max(dataset_final$anio),
 
 El dataset tiene una dimensión temporal explícita: cada observación corresponde a un departamento en un año específico. Una partición temporal estricta, entrenando en años anteriores y evaluando en los más recientes, concentraría el conjunto de prueba en los años 2019-2022, que fueron atípicos por los efectos de la pandemia. Evaluarse exclusivamente sobre años atípicos no ofrece una imagen representativa del desempeño real del modelo.
 
-Por eso se optó por una **partición estratificada por año**: de cada uno de los 14 años se toma aleatoriamente el 70% de los departamentos para entrenamiento y el 30% restante para prueba. Esto garantiza que todos los años, incluidos los de pandemia, estén representados en ambos conjuntos, y permite comparar el comportamiento entre departamentos a lo largo de todo el período analizado.
+Por eso se optó por una partición estratificada por año: de cada uno de los 14 años se toma aleatoriamente el 70% de los departamentos para entrenamiento y el 30% restante para prueba. Esto garantiza que todos los años, incluidos los de pandemia, estén representados en ambos conjuntos, y permite comparar el comportamiento entre departamentos a lo largo de todo el período analizado.
 
 ```{r particion}
 set.seed(123)
@@ -319,23 +337,23 @@ Este es el único paso de preprocesamiento que se aplica antes de entrenar los t
 
 ## Métricas de Evaluación
 
-Los tres algoritmos se compararán usando dos métricas calculadas sobre el conjunto de prueba (años 2019--2022). Calcularlas también sobre el conjunto de entrenamiento permitirá detectar sobreajuste.
+Para comparar los tres algoritmos vamos a usar dos métricas calculadas sobre el conjunto de prueba (años 2019--2022). También las vamos a calcular sobre el conjunto de entrenamiento para poder detectar sobreajuste.
 
 ### R^2 - Coeficiente de Determinación
 
-El R^2 indica qué proporción de la varianza de la variable respuesta es explicada por el modelo. Un R^2 de 0.80 significa que el modelo captura el 80% de la variabilidad en la tasa de divorcio; el 20% restante queda sin explicar. Es la métrica principal de ajuste porque habla en términos sustantivos: cuánto de lo que ocurre con el divorcio departamental puede atribuirse a las variables que tenemos.
+El R^2 nos dice qué proporción de la varianza de la variable respuesta logra explicar el modelo. Un R^2 de 0.80 significa que el modelo captura el 80% de la variabilidad en la tasa de divorcio; el 20% restante se queda sin explicar. Es la métrica principal de ajuste porque nos dice algo concreto: cuánto de lo que ocurre con el divorcio departamental se puede atribuir a las variables que tenemos.
 
-Un R^2 alto en entrenamiento y notablemente más bajo en prueba es la señal más directa de sobreajuste: el modelo memorizó el conjunto de entrenamiento en lugar de aprender un patrón generalizable. Para este proyecto se considera aceptable una caída de hasta 10 puntos porcentuales entre entrenamiento y prueba.
+Un R^2 alto en entrenamiento y notablemente más bajo en prueba es la señal más clara de sobreajuste: el modelo memorizó el conjunto de entrenamiento en lugar de aprender un patrón que generalice. Para este proyecto consideramos aceptable una caída de hasta 10 puntos porcentuales entre entrenamiento y prueba.
 
 ### RMSE - Raíz del Error Cuadrático Medio
 
-El RMSE mide el error típico de predicción en las mismas unidades que la variable respuesta, es decir, en divorcios por cada 100 matrimonios. Un RMSE de 2.5 significa que en promedio el modelo se equivoca en 2.5 divorcios por cada 100 matrimonios. Al elevar los errores al cuadrado antes de promediar, penaliza más los errores grandes, lo que lo hace sensible a los valores atípicos. En este dataset eso es una propiedad deseable: el departamento de Guatemala concentra las tasas más altas y los errores sobre él deben pesar en la evaluación.
+El RMSE mide el error típico de predicción en las mismas unidades que la variable respuesta, es decir, en divorcios por cada 100 matrimonios. Un RMSE de 2.5 quiere decir que en promedio el modelo se equivoca en 2.5 divorcios por cada 100 matrimonios. Al elevar los errores al cuadrado antes de promediar, penaliza más los errores grandes, lo que lo hace sensible a los valores atípicos. En este dataset eso nos conviene: el departamento de Guatemala concentra las tasas más altas y los errores sobre él tienen que pesar en la evaluación.
 
-Se prefiere RMSE sobre MAE porque los errores grandes son cualitativamente más graves en este contexto: subestimar significativamente la tasa de un departamento tiene mayores implicaciones de política pública que subestimarlo levemente. Se prefiere sobre el MSE porque al tomar la raíz cuadrada el resultado es directamente interpretable en las mismas unidades que la variable respuesta, a diferencia del MSE que quedaría expresado en divorcios al cuadrado por cada 100 matrimonios al cuadrado.
+Preferimos RMSE sobre MAE porque los errores grandes son más graves en este contexto: subestimar mucho la tasa de un departamento tiene más implicaciones de política pública que subestimarla un poco. Y lo preferimos sobre el MSE porque al tomar la raíz cuadrada el resultado queda directamente interpretable en las mismas unidades que la variable respuesta, mientras que el MSE quedaría expresado en divorcios al cuadrado por cada 100 matrimonios al cuadrado.
 
 ### Criterio de Selección
 
-El mejor modelo de cada algoritmo será el de menor RMSE en el conjunto de prueba, siempre que no presente sobreajuste (caída de R^2 mayor a 10 puntos porcentuales entre entrenamiento y prueba). Si dos modelos tienen RMSE comparable, se prefiere el de mayor R^2 o el más simple.
+El mejor modelo de cada algoritmo va a ser el de menor RMSE en el conjunto de prueba, siempre que no muestre sobreajuste (caída de R^2 mayor a 10 puntos porcentuales entre entrenamiento y prueba). Si dos modelos tienen un RMSE parecido, nos quedamos con el de mayor R^2 o con el más simple.
 
 ```{r funciones_metrica}
 rmse_fn <- function(actual, predicted) sqrt(mean((actual - predicted)^2))
@@ -404,9 +422,6 @@ cat(sprintf("Variante 1 — Entrenamiento | RMSE: %.4f | R2: %.4f\n",
 cat(sprintf("Variante 1 — Prueba        | RMSE: %.4f | R2: %.4f\n",
             rmse_test_lm1,  r2_test_lm1))
 ```
-
-
-> **\[COMPLETAR\]** Código de entrenamiento. Reportar RMSE y R² en entrenamiento y en prueba.
 
 ### Variante 2
 
@@ -487,13 +502,20 @@ tabla_lm <- data.frame(
 print(tabla_lm, digits = 4, row.names = FALSE)
 ```
 
-Como nos podemos dar cuenta aquel model que llega a tener mejores metricas es el tercero, con un RMSE al momento de la prueba de 1.8333 y teniendo el mejor R^2 entre todos, siendo este de 0.7566.
+Las tres variantes nos cuentan algo distinto sobre qué información carga el poder predictivo del modelo. La Variante 1, que usa solo los índices del GDL, obtiene un R^2 de prueba de -0.0288: un valor negativo, lo que quiere decir que el modelo predice peor que simplemente usar la media del conjunto de entrenamiento. Esto nos dice que los índices regionales de desarrollo humano, por sí solos, no logran predecir la tasa de divorcio departamental. La Variante 2 agrega el año y sube el R^2 de prueba a 0.1138, lo cual confirma que sí hay una tendencia temporal pero todavía no es suficiente. La Variante 3 incorpora el departamento como factor y aquí sí vemos un salto importante: el R^2 de prueba llega a 0.7566 con un RMSE de 1.8329, comparado con 3.4972 de la Variante 2 y 3.7680 de la Variante 1.
+
+Bajo el criterio que definimos en la sección de Métricas, seleccionamos la Variante 3. Su caída de R^2 entre entrenamiento y prueba es de 6.64 puntos porcentuales (de 0.8230 a 0.7566), por debajo del umbral de 10 puntos que pusimos para considerar que el modelo generaliza bien. Las Variantes 1 y 2, aunque tampoco muestran sobreajuste, quedan descartadas por su mal desempeño en prueba.
+
+Los coeficientes del modelo seleccionado nos dicen cosas interesantes. Tomando Alta Verapaz como categoría de referencia, los departamentos con efecto positivo y estadísticamente significativo son los del oriente del país (Zacapa +9.06, Izabal +8.02, Jalapa +7.52, Jutiapa +6.70, Chiquimula +6.12, Santa Rosa +7.02) junto con Guatemala (+9.49) y El Progreso (+9.80). En cambio, los departamentos del altiplano occidental (Sololá +1.00, Totonicapán +1.29, Quiché +2.13, Huehuetenango +2.11) no muestran diferencia significativa con Alta Verapaz: todos tienen tasas de divorcio bajas. Esta agrupación coincide con el clustering que obtuvimos en el Proyecto 1, donde el altiplano formaba un bloque aparte del resto del país.
+
+El coeficiente de `anio` es +0.556 por año (p < 0.001), lo que nos dice que la tasa de divorcio sube en promedio medio punto cada año entre 2009 y 2022. Por otro lado, los índices del GDL (`healthindex`, `incindex`) pierden significancia individual cuando entra `departamento` al modelo; solo `edindex` queda marginal (p = 0.065). Esto pasa porque el GDL opera a nivel de las 8 regiones administrativas mientras que `departamento` ofrece 22 categorías más granulares: los dummies departamentales absorben la variación que los índices capturaban a nivel regional, y por eso los índices ya no aportan información independiente.
 
 ------------------------------------------------------------------------
 
 ## Árbol de Decisión
 
 El árbol de decisión predice la tasa de divorcio por cada 100 matrimonios a partir de cinco predictores: el departamento (captura dónde vive la población), el año (tendencia temporal), y los tres índices del GDL (healthindex, edindex, incindex), que aproximan condiciones socioeconómicas estrechamente relacionadas con los patrones demográficos, incluidos los rangos de edad al matrimonio y al divorcio documentados en el Proyecto 1. A diferencia de la regresión lineal, el árbol identifica umbrales naturales en estas variables, lo que le permite capturar relaciones no lineales sin necesidad de especificarlas de antemano.
+
 ### Variante 1
 
 #### Hiperparámetros y Justificación
@@ -572,18 +594,16 @@ cat(sprintf("Entrenamiento — RMSE: %.4f | R²: %.4f\n", rmse_train_v2, r2_trai
 cat(sprintf("Prueba        — RMSE: %.4f | R²: %.4f\n", rmse_test_v2,  r2_test_v2))
 ```
 
-Lectura:
-Raíz (7.7) → ¿departamento es AV,CML,ESC...? 
-  → GT no está en esa lista → va a la DERECHA (11)
+#### Interpretación del árbol
 
-Nodo (11) → ¿incindex < 0.71?
-  → 0.82 NO es < 0.71 → va a la DERECHA (15)
+El árbol no siempre es fácil de leer a primera vista, por lo que conviene trazar un caso concreto para ver cómo se llega a una predicción. Tomemos una observación del departamento de Guatemala con `incindex = 0.82`:
 
-Nodo (15) → ¿incindex < 0.8?
-  → 0.82 NO es < 0.8 → va a la DERECHA (23)
+- **Nodo raíz** (predicción inicial: 7.7): la primera división pregunta si el departamento pertenece al grupo `{AV, CML, ESC, HUE, PET, QUI, SAC, SM, SOL, SUC, TOT}`, que agrupa departamentos del altiplano y norte con tasas históricamente bajas. Guatemala no está en esa lista, entonces la observación sigue por la rama derecha.
+- **Segundo nodo** (predicción: 11): la división pregunta si `incindex < 0.71`. Como 0.82 es mayor, sigue por la rama derecha.
+- **Tercer nodo** (predicción: 15): la división pregunta si `incindex < 0.80`. Como 0.82 sigue siendo mayor, vuelve por la rama derecha.
+- **Hoja final**: la observación termina en el nodo con predicción de **23 divorcios por cada 100 matrimonios**, que agrupa apenas al 1% del conjunto de entrenamiento.
 
-Hoja: predicción = 23 divorcios por cada 100 matrimonios
-
+Lo importante es que la predicción de 23 no la causa una sola variable. Es la combinación de un departamento fuera del altiplano y un `incindex` superior a 0.80 lo que identifica al grupo con la tasa más alta. Esta interacción entre un corte categórico (departamento en cierto grupo) y un umbral numérico (`incindex` arriba de 0.80) es justamente lo que la regresión lineal no puede capturar, y por eso el árbol mejora el RMSE. La Variante 3 se lee igual, solo que con más reglas y mayor profundidad.
 
 ### Variante 3
 
@@ -622,6 +642,8 @@ tree_v3 <- prune(tree_full, cp = cp_opt)
 rpart.plot(tree_v3, type = 4, extra = 101, fallen.leaves = TRUE,
            main = "Árbol de Decisión — Variante 3 (cp óptimo, regla 1-SE)")
 ```
+
+El árbol resultante es bastante más profundo y ramificado que el de la Variante 2 porque el `cp` óptimo que escogió la validación cruzada permite hacer divisiones más finas en los nodos terminales. La forma de leerlo es igual a la que vimos en la Interpretación del árbol de la Variante 2, solo que ahora hay más reglas y combinaciones de departamento e índices GDL. Esto explica por qué tiene mejor desempeño en las métricas, pero también por qué sigue mostrando sobreajuste como ya señalamos en la selección.
 
 #### Entrenamiento y Resultados
 
@@ -667,10 +689,11 @@ cat(sprintf("RMSE Test: %.4f | R² Test: %.4f\n",
 cat(sprintf("Caída de R² (train → test): %.4f puntos porcentuales\n", caida_r2 * 100))
 ```
 
-La Variante 3 es la opción metodológicamente más sólida porque la elección de `cp` surge de los propios datos de entrenamiento (validación cruzada interna) y no de un valor fijo. 
-Si su RMSE en prueba es comparable al de las otras variantes, se selecciona como el mejor árbol por su menor riesgo de sobreajuste. En caso de que la Variante 1 o 2 presente un RMSE notablemente mayor sin con poca caida de R² llegando a 10 o 20 puntos, se priorizaría esa variante.
-Por otro lado la Variante 2, aunque tienen un mayor RMSE en prueba, tiene una caída de R² de aproximadamente 10 puntos porcentuales, lo que sugiere que el aumento de complejidad no se traduce en un sobreajuste severo.
-En ese caso, se podría considerar la Variante 2 como una opción viable si se busca un modelo con alta legibilidad y capacidad de captura de interacciones, siempre que se acepte un RMSE ligeramente mayor a cambio de un R² más alto en prueba.
+La Variante 3 obtiene el menor RMSE en prueba (1.9727) y el mayor R^2 en prueba (0.7180) de las tres, así que es la que seleccionamos bajo el criterio definido en Métricas. La poda mediante validación cruzada con la regla 1-SE no solo es la opción metodológicamente más sólida, sino que además resultó ser la de mejor desempeño: no hubo conflicto entre el proceso y el resultado.
+
+Aun así, hay que reconocer una limitación importante que afecta a las tres variantes por igual: todas presentan caídas de R^2 entre entrenamiento y prueba que pasan el umbral de 10 puntos porcentuales que pusimos como aceptable (V1: 27.6 pp, V2: 25.4 pp, V3: 21.6 pp). Esto nos dice que el árbol de decisión, en cualquiera de sus configuraciones, tiende a memorizar el conjunto de entrenamiento más de lo deseable con este dataset. La razón está en la combinación entre el tamaño reducido del dataset (308 observaciones) y la presencia de una variable categórica de 22 niveles (`departamento`) que el árbol puede usar para crear particiones muy específicas. La Variante 3 reduce el problema pero no lo elimina.
+
+Esta limitación es justamente lo que nos motiva a pasar al siguiente algoritmo. Random Forest, al promediar las predicciones de varios árboles entrenados sobre muestras bootstrap distintas, reduce la varianza que tiene un árbol individual sin perder la capacidad de capturar relaciones no lineales. Comparar el mejor árbol con el mejor Random Forest nos va a decir cuánto se gana por ese camino.
 
 ------------------------------------------------------------------------
 
@@ -806,6 +829,14 @@ varImpPlot(rf_v3,
            type = 1)
 ```
 
+La importancia de variables medida por `%IncMSE` nos dice cuánto sube el error del modelo cuando se permuta aleatoriamente cada predictor, dejando los demás iguales. Lo que vemos aquí es consistente con lo que encontramos en Regresión Lineal V3:
+
+- `departamento` (49.43%) es por mucho el predictor más importante. Permutar esta variable casi duplica la importancia del segundo, lo cual nos confirma que el peso de la predicción lo carga la identidad geográfica.
+- Los tres índices del GDL aportan de forma parecida entre sí: `incindex` (34.83%), `edindex` (32.34%) y `healthindex` (23.23%). Aunque en Regresión Lineal V3 estos índices perdían significancia individual al agregar `departamento`, en Random Forest sí aportan información, probablemente porque captura interacciones no lineales que el modelo lineal no puede modelar.
+- `anio` (30.59%) queda en un lugar intermedio, lo cual va de la mano con la tendencia temporal que también vimos en el coeficiente positivo del año en Regresión Lineal V3.
+
+En conjunto, esta jerarquía respalda la decisión de incluir `departamento` como predictor central y nos muestra que los indicadores socioeconómicos del GDL sí aportan más allá del efecto fijo departamental cuando el modelo puede capturar interacciones.
+
 #### Entrenamiento y Resultados
 
 ```{r rf_v3_metricas}
@@ -850,13 +881,189 @@ cat(sprintf("RMSE Test: %.4f | R² Test: %.4f\n",
 cat(sprintf("Caída de R² (train → test): %.4f puntos porcentuales\n", caida_r2_rf * 100))
 ```
 
-La Variante 3 es metodológicamente la más sólida porque la elección de `mtry` emerge de los propios datos de entrenamiento mediante el error OOB, sin intervención manual ni uso del conjunto de prueba. Si su RMSE en prueba es comparable al de las otras variantes, se selecciona como el mejor modelo de Random Forest por su proceso de selección más riguroso. En caso de que una variante más simple muestre RMSE similar con menor caída de R², se preferiría la más simple siguiendo el principio de parsimonia.
+La Variante 2 obtiene el menor RMSE en prueba (1.7081) y el mayor R^2 en prueba (0.7886) de las tres, así que es la que seleccionamos bajo el criterio definido en Métricas. Su caída de R^2 entre entrenamiento y prueba es de 18.66 puntos porcentuales: queda por encima del umbral de 10 pp, pero es la menor de las tres variantes y también la menor entre todos los modelos basados en árboles que hemos probado hasta ahora.
+
+El resultado de la Variante 3 vale la pena verlo aparte. `tuneRF` seleccionó `mtry = 1` como valor óptimo según el error OOB, lo cual coincide con el valor por defecto que ya usaba la Variante 1. Por eso ambas dan métricas casi iguales (V1 con RMSE 1.9408, V3 con RMSE 1.9240), y la pequeña diferencia se debe al aumento de árboles de 500 a 1000, no al tuning en sí. En la práctica, V3 termina siendo una versión más estable de V1, pero no nos aporta una configuración realmente distinta.
+
+Lo interesante es que la exploración manual de la Variante 2 (`mtry = 3`, `nodesize = 3`) le gana tanto a V1 como a V3 a pesar de no venir de un proceso automático. Esto pasa porque el error OOB que usa `tuneRF` favoreció el valor que maximiza la diversidad del ensamble (`mtry` bajo), pero en este dataset darle a cada árbol más predictores candidatos por nodo (`mtry = 3`) genera mejor generalización al conjunto de prueba. En otras palabras, el OOB no funcionó como buen proxy del error en prueba.
+
+Por eso seleccionamos la Variante 2 como el mejor Random Forest. La elección prioriza el desempeño empírico sobre el rigor del proceso de tuning, que es justamente lo que dice el criterio de Métricas: menor RMSE en prueba. Comparada con el mejor árbol de decisión, esta variante baja el RMSE de 1.9727 a 1.7081 y la caída de R^2 de 21.60 pp a 18.66 pp, lo cual nos confirma que el ensamble sí aporta una mejora real sobre el árbol individual.
 
 ------------------------------------------------------------------------
 
 ## Comparación Final entre Algoritmos
 
-> **\[COMPLETAR\]** Tabla con el mejor modelo de cada algoritmo (RMSE y R² en prueba). Gráfica de valores reales vs. predichos para el mejor modelo general. Discutir cuál algoritmo obtuvo el mejor desempeño, si la ganancia de complejidad se justifica, y si algún modelo presenta sobreajuste que lo descalifique.
+Una vez seleccionado el mejor modelo dentro de cada algoritmo, conviene compararlos entre sí para identificar cuál ofrece la mejor predicción global de la tasa de divorcio departamental.
+
+```{r comparacion_final}
+comparacion_final <- data.frame(
+  Algoritmo   = c("Regresión Lineal", "Árbol de Decisión", "Random Forest"),
+  Variante    = c("V3: HDI + año + departamento",
+                  "V3: cp óptimo (1-SE)",
+                  "V2: mtry=3, nodesize=3"),
+  RMSE_Test   = c(rmse_test_lm3, rmse_test_v3, rmse_test_rf2),
+  R2_Test     = c(r2_test_lm3,   r2_test_v3,   r2_test_rf2),
+  Caida_R2_pp = c((r2_train_lm3 - r2_test_lm3) * 100,
+                  (r2_train_v3  - r2_test_v3)  * 100,
+                  (r2_train_rf2 - r2_test_rf2) * 100)
+)
+
+knitr::kable(
+  comparacion_final,
+  col.names = c("Algoritmo", "Variante", "RMSE Test", "R² Test", "Caída R² (pp)"),
+  digits    = 4,
+  caption   = "Comparación de los mejores modelos por algoritmo"
+)
+```
+
+```{r reales_vs_predichos}
+preds_rf <- predict(rf_v2, test_modelo)
+
+df_plot <- data.frame(
+  real     = test_modelo$tasa_divorcio_por_100,
+  predicho = preds_rf
+)
+
+ggplot(df_plot, aes(x = real, y = predicho)) +
+  geom_point(alpha = 0.7, color = "steelblue", size = 2) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+  labs(
+    x     = "Tasa real (divorcios por cada 100 matrimonios)",
+    y     = "Tasa predicha",
+    title = "Valores reales vs predichos — Random Forest V2 (conjunto de prueba)"
+  ) +
+  theme_minimal()
+```
+
+Random Forest V2 obtiene el mejor desempeño global con un RMSE de 1.7081 y un R^2 de 0.7886 en prueba. Es el modelo que captura mejor la variabilidad de la tasa de divorcio departamental y el que tiene el error promedio más bajo al predecir sobre años y departamentos que no usó para entrenar.
+
+La distancia entre los tres modelos no es igual. Entre Random Forest V2 y Regresión Lineal V3 la diferencia es bastante pequeña: 0.12 puntos de RMSE y 3.2 puntos de R^2 a favor del ensamble. La diferencia con el Árbol de Decisión V3 sí es mayor: 0.26 puntos de RMSE y 7 puntos de R^2 a favor del Random Forest. Esto nos dice que el ensamble corrige buena parte de la varianza que el árbol individual no podía controlar.
+
+Aun así, hay un detalle importante. Regresión Lineal V3 es el único modelo que cumple con el umbral de sobreajuste que pusimos en Métricas (6.64 pp frente a 18.66 pp de RF y 21.60 pp del árbol). En términos de generalización pura, la regresión lineal es la más estable: aprende un patrón que se mantiene casi igual entre entrenamiento y prueba. Random Forest gana en métricas absolutas pero a costa de un sobreajuste fuerte, lo cual hay que tener en cuenta cuando se use el modelo en casos donde la confiabilidad importe más que el mínimo error.
+
+En la siguiente sección discutimos, con base en estos resultados, cuál modelo seleccionamos como el modelo final del proyecto y por qué.
+
+------------------------------------------------------------------------
+
+## Selección del Modelo Final
+
+Como vimos en la comparación anterior, **el modelo final seleccionado es la Regresión Lineal Múltiple Variante 3** (con los predictores: departamento + año + healthindex + edindex + incindex). Nos decidimos por este modelo por tres razones principales:
+
+**1. No se pierde mucho en métricas.** Random Forest V2 le gana a Regresión Lineal V3 por 0.12 puntos de RMSE (1.71 vs 1.83) y 3.2 puntos de R^2 (0.789 vs 0.757). No es una diferencia muy grande, ya que ambos modelos explican alrededor de tres cuartas partes de la variabilidad en la tasa de divorcio, y el error promedio difiere en menos de 0.13 divorcios por cada 100 matrimonios. En la práctica esa diferencia es muy pequeña.
+
+**2. Random Forest está bastante sobreajustado.** La caída de R^2 entre entrenamiento y prueba es de 18.66 puntos porcentuales en Random Forest V2, mientras que en Regresión Lineal V3 es de solo 6.64 puntos. Esto quiere decir que Random Forest llegó a un R^2 de 0.9752 en entrenamiento pero baja a 0.7886 en prueba: aprendió demasiado de los datos de entrenamiento, memorizando patrones específicos que no se sostienen cuando se evalúa en años y departamentos nuevos. Regresión Lineal V3, en cambio, pasa de 0.823 a 0.757, una caída pequeña que nos dice que el patrón aprendido es estable.
+
+**3. Regresión Lineal es más fácil de interpretar.** Cada coeficiente del modelo nos dice cuánto sube o baja la tasa de divorcio cuando una variable cambia, dejando las demás iguales. Esto es importante para las predicciones que vienen después: si queremos estimar qué pasaría con la tasa de divorcio de un departamento bajo distintas condiciones, un modelo con coeficientes claros nos da predicciones que se pueden explicar. Random Forest, al ser un ensamble de 500 árboles, funciona como caja negra y no nos permite ese nivel de transparencia.
+
+Al final estamos sacrificando una pequeña mejora en precisión a cambio de un modelo que generaliza mejor y que se puede interpretar y comunicar. Para los objetivos de este proyecto, donde queremos entender qué impulsa la tasa de divorcio departamental y no solo predecir un número, Regresión Lineal V3 nos da más.
+
+------------------------------------------------------------------------
+
+## Aplicación del Modelo Final
+
+A partir del modelo que fue seleccionado, se decidió aplicarlo en dos situaciones distintas para indagar más a fondo en el fenómeno del divorcio: una evaluación de predicciones puntuales sobre el conjunto de prueba y una proyección de la tasa de divorcio para el año 2025.
+
+### Predicciones puntuales sobre el conjunto de prueba
+
+Calculamos la predicción del modelo para cada una de las 98 observaciones del conjunto de prueba y la comparamos con el valor real, para ver dónde el modelo acierta y dónde se equivoca más.
+
+```{r predicciones_puntuales}
+nombre_depto_full <- tools::toTitleCase(names(abrev_depto))
+names(nombre_depto_full) <- unname(abrev_depto)
+
+predicciones_test <- test_modelo %>%
+  mutate(
+    Predicho     = predict(modelo_lm3, newdata = test_modelo),
+    Error        = tasa_divorcio_por_100 - Predicho,
+    Error_Abs    = abs(Error),
+    Departamento = nombre_depto_full[as.character(departamento)]
+  )
+
+cat(sprintf("Error absoluto promedio:   %.3f\n", mean(predicciones_test$Error_Abs)))
+cat(sprintf("Error absoluto mediano:    %.3f\n", median(predicciones_test$Error_Abs)))
+cat(sprintf("Error absoluto máximo:     %.3f\n", max(predicciones_test$Error_Abs)))
+cat(sprintf("%% de predicciones con error < 1: %.1f%%\n",
+            100 * mean(predicciones_test$Error_Abs < 1)))
+cat(sprintf("%% de predicciones con error < 2: %.1f%%\n",
+            100 * mean(predicciones_test$Error_Abs < 2)))
+```
+
+```{r tabla_mayores_errores}
+predicciones_test %>%
+  arrange(desc(Error_Abs)) %>%
+  head(10) %>%
+  select(Departamento, Año = anio,
+         `Tasa Real` = tasa_divorcio_por_100,
+         Predicho, Error) %>%
+  knitr::kable(digits = 3,
+               caption = "Top 10 mayores errores de predicción sobre el conjunto de prueba")
+```
+
+El modelo predice con error mediano de 1.067 divorcios por cada 100 matrimonios y error promedio de 1.362. Esto quiere decir que la mitad de las predicciones se desvía del valor real en poco más de un punto y, en promedio, en menos de un punto y medio. El 48% de las predicciones queda dentro de 1 divorcio del valor real y el 77.6% dentro de 2. Para un fenómeno demográfico agregado a nivel departamental, esa calibración es razonable: el modelo es confiable para el caso típico.
+
+La tabla nos muestra los diez casos donde el modelo se equivocó más, y aquí aparecen tres patrones distintos. Primero, Retalhuleu en 2022 y 2021 (errores de +6.51 y +3.21): el modelo se queda corto porque ese departamento tuvo una subida fuerte en años recientes que la tendencia lineal del modelo no alcanza a capturar. Segundo, los casos de 2020 como Baja Verapaz (−5.32) y Petén (−3.59): el modelo se pasa porque no "sabe" que la pandemia generó caídas atípicas en algunos departamentos. Tercero, Alta Verapaz en 2009 da una predicción de −0.576, un valor negativo que no tiene sentido para la variable respuesta: es un efecto raro del modelo lineal cuando la combinación de coeficientes para el año más bajo y un departamento con coeficiente pequeño cae por debajo de cero. En la práctica esa predicción se leería como "cercana a cero", pero nos deja ver una limitación del enfoque lineal en los bordes del rango.
+
+En general, los errores grandes se concentran en años atípicos (pandemia) o en departamentos con dinámicas recientes que no encajan con la tendencia lineal global. Son justamente los casos donde el modelo es menos confiable y donde valdría la pena complementar la predicción con un análisis cualitativo.
+
+### Proyección al año 2025
+
+Usamos el modelo final para proyectar la tasa de divorcio de los 22 departamentos al año 2025, manteniendo los índices GDL del año 2022 (el último que tenemos). Esta proyección aísla el efecto de la tendencia temporal: nos muestra hacia dónde se moverían las tasas si las condiciones socioeconómicas se quedaran estables.
+
+```{r proyeccion_2025}
+indices_2022 <- dataset_final %>%
+  filter(anio == 2022) %>%
+  mutate(departamento_abrev = abrev_depto[departamento]) %>%
+  select(departamento_abrev, departamento_full = departamento,
+         healthindex, edindex, incindex, tasa_2022 = tasa_divorcio_por_100)
+
+escenario_2025 <- indices_2022 %>%
+  mutate(
+    anio         = 2025,
+    departamento = factor(departamento_abrev, levels = levels(train_modelo$departamento))
+  )
+
+escenario_2025$Predicho_2025 <- predict(modelo_lm3, newdata = escenario_2025)
+
+tabla_proyeccion <- escenario_2025 %>%
+  mutate(
+    Departamento = tools::toTitleCase(departamento_full),
+    Cambio       = Predicho_2025 - tasa_2022
+  ) %>%
+  arrange(desc(Predicho_2025)) %>%
+  select(Departamento,
+         `Tasa 2022 (real)` = tasa_2022,
+         `Predicción 2025`  = Predicho_2025,
+         Cambio)
+
+knitr::kable(tabla_proyeccion, digits = 3,
+             caption = "Proyección de tasa de divorcio para 2025 manteniendo los índices GDL de 2022")
+```
+
+El modelo proyecta a Guatemala como el departamento con la tasa más alta en 2025, con 20.4 divorcios por cada 100 matrimonios, seguido por El Progreso (17.6) y Zacapa (16.9). El altiplano occidental se mantiene en la parte baja del ranking, lo cual va en línea con la lectura de coeficientes que hicimos en la selección de Regresión Lineal V3.
+
+Vale la pena explicar cómo funciona la columna `Cambio`. Como el modelo es aditivo y el coeficiente de `anio` es +0.556 por año, la diferencia que el modelo predice entre 2022 y 2025 siempre es de +1.67. Por eso, los valores negativos no quieren decir que el modelo prediga una caída, sino que la tasa real de 2022 fue inusualmente alta y la proyección base del modelo se queda por debajo. Por ejemplo, Retalhuleu en 2022 tuvo una tasa real de 18.2 (un máximo histórico para ese departamento) y la proyección de 13.4 para 2025 refleja la estimación base del modelo, no una caída. En el otro extremo, departamentos como Izabal (+3.29) muestran que el modelo proyecta una tasa más alta que la observada en 2022, lo cual sugiere que considera que ese valor de 2022 estaba por debajo de lo esperado dadas las condiciones socioeconómicas y la tendencia temporal.
+
+Esta proyección se debe ver como un escenario base ("si los índices GDL se mantienen estables y la tendencia temporal sigue al mismo ritmo"), no como un pronóstico definitivo. Predecir tres años más allá del rango de entrenamiento implica extrapolación, lo cual amplifica la incertidumbre asociada al coeficiente temporal. Cambios reales en los índices de salud, educación o ingreso modificarían los valores predichos.
+
+------------------------------------------------------------------------
+
+## Conclusiones
+
+- Se construyó un dataset de 308 observaciones integrando los registros del INE con los índices de desarrollo humano del GDL. La principal limitación es que estos índices están disponibles solo a nivel regional, no departamental.
+
+- Se entrenaron y evaluaron nueve modelos: tres variantes por cada uno de los tres algoritmos (Regresión Lineal, Árbol de Decisión y Random Forest).
+
+- Random Forest V2 obtuvo el mejor desempeño absoluto (RMSE 1.7081, R^2 0.7886), pero con un sobreajuste considerable: la caída de R^2 entre entrenamiento y prueba fue de 18.66 puntos porcentuales.
+
+- Regresión Lineal V3 se seleccionó como modelo final. Sus métricas son cercanas (RMSE 1.8329, R^2 0.7566), su caída de R^2 fue de solo 6.64 puntos porcentuales y permite interpretar directamente el efecto de cada predictor.
+
+- La identidad del departamento es el predictor más importante: sin ella el R^2 de prueba es negativo (−0.03), y al incorporarla sube a 0.76.
+
+- El 77.6% de las predicciones del modelo final sobre el conjunto de prueba se desvían en menos de 2 divorcios por cada 100 matrimonios del valor real.
+
+- El altiplano occidental (Sololá, Totonicapán, Quiché, Huehuetenango) forma un bloque con tasas bajas, mientras que el oriente (Zacapa, Izabal, Jalapa, Jutiapa, Chiquimula, Santa Rosa) junto con Guatemala y El Progreso concentra las tasas más altas. Esto confirma el patrón regional identificado en el clustering del Proyecto 1.
+
+- Los índices de desarrollo humano por sí solos no predicen la tasa de divorcio. Los factores ligados a la identidad departamental capturan información que los indicadores regionales no transmiten.
 
 ------------------------------------------------------------------------
 
@@ -875,3 +1082,9 @@ Mbaye, E. H., Al-Kindi, M., & Al-Alawi, A. (2020). The effects of sociodemograph
 Papageorgiou, I., & Velásquez, R. (2025). When the economy breaks down, do marriages follow? Crisis type and family dissolution across 83 countries (1990–2019). *Applied Research in Quality of Life*. https://link.springer.com/article/10.1007/s11482-025-10540-z
 
 Yöntem, M. K., Adem, K., İlhan, T., & Kılıçarslan, S. (2019). Divorce prediction using correlation based feature selection and artificial neural networks. *Nevşehir Hacı Bektaş Veli University Journal of ISS*, *9*(1), 259–273. https://www.researchgate.net/publication/373398266_Divorce_Prediction_Using_Machine_Learning_Methodology
+
+------------------------------------------------------------------------
+
+## Anexos
+
+Repositorio del proyecto en GitHub: https://github.com/Bamo0507/Proyecto2_TasaDivorcios
